@@ -95,14 +95,7 @@ serve(async (req) => {
       });
     }
 
-    const { password, operation, data, id, updates } = requestBody;
-
-    if (!password) {
-      return new Response(JSON.stringify({ error: "Password is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const { operation, data, id, updates } = requestBody;
 
     if (!operation) {
       return new Response(JSON.stringify({ error: "Operation is required" }), {
@@ -111,41 +104,8 @@ serve(async (req) => {
       });
     }
 
-    // Use service role key for admin operations (bypasses RLS)
+    // Domain already verified - use service role key for admin operations (bypasses RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Verify admin password and admin status
-    const { data: adminData, error: adminError } = await supabase
-      .from("admin_password")
-      .select("*")
-      .eq("password", password)
-      .eq("is_admin", true)
-      .maybeSingle();
-
-    if (adminError) {
-      return new Response(
-        JSON.stringify({
-          error: "Database error",
-          details: adminError.message,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    if (!adminData) {
-      return new Response(
-        JSON.stringify({
-          error: "Invalid password or not authorized",
-        }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
 
     // Perform the requested operation
     let result;

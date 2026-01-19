@@ -135,7 +135,8 @@ export default function MetricsDashboard({ isAdmin = false }) {
       fetchQuarterGoals();
     } catch (error) {
       console.error("Error saving goal:", error);
-      toast.error("Failed to save goal");
+      const errorMessage = error.message || "Failed to save goal";
+      toast.error(errorMessage);
     }
   };
 
@@ -147,7 +148,8 @@ export default function MetricsDashboard({ isAdmin = false }) {
       fetchQuarterGoals();
     } catch (error) {
       console.error("Error deleting goal:", error);
-      toast.error("Failed to delete goal");
+      const errorMessage = error.message || "Failed to delete goal";
+      toast.error(errorMessage);
     }
   };
 
@@ -190,7 +192,10 @@ export default function MetricsDashboard({ isAdmin = false }) {
       fetchMetrics();
     } catch (error) {
       console.error("Error updating metric:", error);
-      toast.error("Failed to update metric");
+      const errorMessage = error.message || "Failed to update metric";
+      toast.error(errorMessage);
+      // If password is missing, don't reload - just show the error
+      // User can refresh manually if needed
     }
   };
 

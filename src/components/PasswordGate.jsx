@@ -17,8 +17,11 @@ export default function PasswordGate({ children }) {
     const authData = sessionStorage.getItem("elkPeakAuth");
     if (authData) {
       const parsed = JSON.parse(authData);
-      setIsAuthenticated(true);
-      setIsAdmin(parsed.isAdmin);
+      // Restore session if authenticated (password may be missing but that's OK for viewing)
+      if (parsed.authenticated) {
+        setIsAuthenticated(true);
+        setIsAdmin(parsed.isAdmin);
+      }
       setIsChecking(false);
     } else {
       setIsChecking(false);
@@ -40,13 +43,12 @@ export default function PasswordGate({ children }) {
         setIsAuthenticated(true);
         setIsAdmin(result.isAdmin || false);
 
-        // Store in session storage (including password for write operations)
+        // Store in session storage
         sessionStorage.setItem(
           "elkPeakAuth",
           JSON.stringify({
             isAdmin: result.isAdmin || false,
             authenticated: true,
-            password: password, // Store password for authenticated write operations
           })
         );
 

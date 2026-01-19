@@ -1,40 +1,6 @@
 import { supabase } from "@/lib/supabase";
 
-// Admin auth function - verifies domain is allowed (no password check)
-export async function adminAuth() {
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-auth`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({}),
-    }
-  );
-
-  if (!response.ok) {
-    let error;
-    try {
-      error = await response.json();
-    } catch (e) {
-      throw new Error(
-        `Domain verification failed: ${response.status} ${response.statusText}`
-      );
-    }
-    const errorMessage =
-      error.message || error.error || error.details || "Domain not allowed";
-    console.error("Supabase Edge Function error:", error);
-    throw new Error(errorMessage);
-  }
-
-  const data = await response.json();
-  return data;
-}
-
-// Verify password function - checks password and admin status
+// Verify password function - checks domain and password, returns admin status
 export async function verifyPassword(password) {
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-password`,
@@ -270,8 +236,6 @@ export async function listQuarterGoals(quarter, year) {
 }
 
 export async function createQuarterGoal(goal) {
-  const password = getAdminPassword();
-  
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
@@ -282,7 +246,6 @@ export async function createQuarterGoal(goal) {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
-        password,
         operation: "createQuarterGoal",
         data: goal,
       }),
@@ -298,8 +261,6 @@ export async function createQuarterGoal(goal) {
 }
 
 export async function updateQuarterGoal(id, updates) {
-  const password = getAdminPassword();
-  
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
@@ -310,7 +271,6 @@ export async function updateQuarterGoal(id, updates) {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
-        password,
         operation: "updateQuarterGoal",
         id,
         updates,
@@ -327,8 +287,6 @@ export async function updateQuarterGoal(id, updates) {
 }
 
 export async function deleteQuarterGoal(id) {
-  const password = getAdminPassword();
-  
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
@@ -339,7 +297,6 @@ export async function deleteQuarterGoal(id) {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
-        password,
         operation: "deleteQuarterGoal",
         id,
       }),
@@ -381,23 +338,8 @@ export async function deleteMetric(table, id) {
   if (error) throw error;
 }
 
-// Get admin password from session storage
-function getAdminPassword() {
-  const authData = sessionStorage.getItem("elkPeakAuth");
-  if (!authData) {
-    throw new Error("Not authenticated");
-  }
-  const parsed = JSON.parse(authData);
-  if (!parsed.password) {
-    throw new Error("Password not found in session");
-  }
-  return parsed.password;
-}
-
-// Update a business metric override (requires admin authentication)
+// Update a business metric override (domain verification handled by edge function)
 export async function updateMetricOverride(company, metricKey, value) {
-  const password = getAdminPassword();
-  
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
@@ -408,7 +350,6 @@ export async function updateMetricOverride(company, metricKey, value) {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
-        password,
         operation: "updateMetricOverride",
         data: {
           company,
