@@ -40,12 +40,13 @@ export default function PasswordGate({ children }) {
         setIsAuthenticated(true);
         setIsAdmin(result.isAdmin || false);
 
-        // Store in session storage
+        // Store in session storage (including password for write operations)
         sessionStorage.setItem(
           "elkPeakAuth",
           JSON.stringify({
             isAdmin: result.isAdmin || false,
             authenticated: true,
+            password: password, // Store password for authenticated write operations
           })
         );
 

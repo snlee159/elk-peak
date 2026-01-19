@@ -79,7 +79,7 @@ serve(async (req) => {
       });
     }
 
-    const { password } = requestBody;
+    const { password, operation, table, data, id, updates } = requestBody;
 
     if (!password) {
       return new Response(JSON.stringify({ error: "Password is required" }), {
@@ -99,17 +99,19 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data, error } = await supabase
+    // Verify admin password and admin status
+    const { data: adminData, error: adminError } = await supabase
       .from("admin_password")
       .select("*")
       .eq("password", password)
+      .eq("is_admin", true)
       .maybeSingle();
 
-    if (error) {
+    if (adminError) {
       return new Response(
         JSON.stringify({
           error: "Database error",
-          details: error.message,
+          details: adminError.message,
           authenticated: false,
         }),
         {
@@ -119,10 +121,10 @@ serve(async (req) => {
       );
     }
 
-    if (!data) {
+    if (!adminData) {
       return new Response(
         JSON.stringify({
-          error: "Invalid password",
+          error: "Invalid password or not authorized",
           authenticated: false,
         }),
         {
@@ -132,10 +134,105 @@ serve(async (req) => {
       );
     }
 
+    // If operation is provided, perform write operation
+    if (operation) {
+      if (!isAllowed && allowedDomains.length > 0) {
+        return new Response(
+          JSON.stringify({ error: "Domain not allowed for write operations" }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      let result;
+      let error;
+
+      switch (operation) {
+        case "updateMetricOverride":
+          const { company, metricKey, value } = data;
+          const overrideData = {
+            company,
+            metric_key: metricKey,
+            value: parseFloat(value) || 0,
+            updated_at: new Date().toISOString(),
+          };
+          const { data: overrideResult, error: overrideError } = await supabase
+            .from("business_metrics_overrides")
+            .upsert(overrideData, {
+              onConflict: "company,metric_key",
+            })
+            .select()
+            .single();
+          result = overrideResult;
+          error = overrideError;
+          break;
+
+        case "createQuarterGoal":
+          const { data: createResult, error: createError } = await supabase
+            .from("quarter_goal")
+            .insert(data)
+            .select()
+            .single();
+          result = createResult;
+          error = createError;
+          break;
+
+        case "updateQuarterGoal":
+          const { data: updateResult, error: updateError } = await supabase
+            .from("quarter_goal")
+            .update(updates)
+            .eq("id", id)
+            .select()
+            .single();
+          result = updateResult;
+          error = updateError;
+          break;
+
+        case "deleteQuarterGoal":
+          const { error: deleteError } = await supabase
+            .from("quarter_goal")
+            .delete()
+            .eq("id", id);
+          error = deleteError;
+          result = { success: true };
+          break;
+
+        default:
+          return new Response(
+            JSON.stringify({ error: "Invalid operation" }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+      }
+
+      if (error) {
+        return new Response(
+          JSON.stringify({
+            error: "Database error",
+            details: error.message,
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Otherwise, just return authentication result
     return new Response(
       JSON.stringify({
         authenticated: true,
-        isAdmin: data.is_admin || false,
+        isAdmin: adminData.is_admin || false,
       }),
       {
         status: 200,

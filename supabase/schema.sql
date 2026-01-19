@@ -186,6 +186,7 @@ ALTER TABLE business_metrics_overrides ENABLE ROW LEVEL SECURITY;
 -- WARNING: These policies allow all operations.
 -- In production, replace with proper authentication checks.
 
+-- Drop existing policies
 DROP POLICY IF EXISTS "Allow all for authenticated" ON admin_password;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON quarter_goal;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON elk_peak_clients;
@@ -198,17 +199,21 @@ DROP POLICY IF EXISTS "Allow all for authenticated" ON runtime_pm_users;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON runtime_pm_subscriptions;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON business_metrics_overrides;
 
-CREATE POLICY "Allow all for authenticated" ON admin_password FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON quarter_goal FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON elk_peak_clients FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON elk_peak_projects FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON life_organizer_kdp_sales FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON life_organizer_notion_sales FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON friendly_tech_days FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON friendly_tech_hoa_clients FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON runtime_pm_users FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON runtime_pm_subscriptions FOR ALL USING (true);
-CREATE POLICY "Allow all for authenticated" ON business_metrics_overrides FOR ALL USING (true);
+-- Read-only policies for all tables (writes go through admin-write edge function)
+CREATE POLICY "Allow read for all" ON admin_password FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON quarter_goal FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON elk_peak_clients FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON elk_peak_projects FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON life_organizer_kdp_sales FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON life_organizer_notion_sales FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON friendly_tech_days FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON friendly_tech_hoa_clients FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON runtime_pm_users FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON runtime_pm_subscriptions FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON business_metrics_overrides FOR SELECT USING (true);
+
+-- Note: Write operations (INSERT, UPDATE, DELETE) are handled by the admin-write edge function
+-- which validates admin credentials and domain restrictions before allowing writes
 
 -- ============================================
 -- Sample Data (Optional)
