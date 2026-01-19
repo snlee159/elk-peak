@@ -58,6 +58,39 @@ CREATE TABLE IF NOT EXISTS elk_peak_projects (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Monthly revenue logs for Elk Peak
+CREATE TABLE IF NOT EXISTS elk_peak_monthly_revenue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  revenue FLOAT DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(year, month)
+);
+
+-- Monthly one-off engagements for Elk Peak
+CREATE TABLE IF NOT EXISTS elk_peak_monthly_engagements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  count INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(year, month)
+);
+
+-- Monthly MRR logs for Elk Peak (separate from revenue)
+CREATE TABLE IF NOT EXISTS elk_peak_monthly_mrr (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  mrr FLOAT DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(year, month)
+);
+
 -- ============================================
 -- Life Organizer Guru Tables
 -- ============================================
@@ -80,6 +113,20 @@ CREATE TABLE IF NOT EXISTS life_organizer_notion_sales (
   product_name TEXT,
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Monthly revenue logs for Life Organizer Guru
+CREATE TABLE IF NOT EXISTS life_organizer_monthly_revenue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  kdp_revenue FLOAT DEFAULT 0,
+  notion_revenue FLOAT DEFAULT 0,
+  etsy_revenue FLOAT DEFAULT 0,
+  gumroad_revenue FLOAT DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(year, month)
 );
 
 -- ============================================
@@ -108,6 +155,18 @@ CREATE TABLE IF NOT EXISTS friendly_tech_hoa_clients (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Monthly revenue and tech days for Friendly Tech
+CREATE TABLE IF NOT EXISTS friendly_tech_monthly_metrics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  revenue FLOAT DEFAULT 0,
+  tech_days INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(year, month)
+);
+
 -- ============================================
 -- Runtime PM Tables
 -- ============================================
@@ -132,6 +191,19 @@ CREATE TABLE IF NOT EXISTS runtime_pm_subscriptions (
   end_date DATE,
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Monthly metrics for Runtime PM
+CREATE TABLE IF NOT EXISTS runtime_pm_monthly_metrics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  active_users INTEGER DEFAULT 0,
+  revenue FLOAT DEFAULT 0,
+  active_subscriptions INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(year, month)
 );
 
 -- ============================================
@@ -163,6 +235,12 @@ CREATE INDEX IF NOT EXISTS idx_friendly_tech_hoa_status ON friendly_tech_hoa_cli
 CREATE INDEX IF NOT EXISTS idx_runtime_pm_users_status ON runtime_pm_users(status);
 CREATE INDEX IF NOT EXISTS idx_runtime_pm_subscriptions_status ON runtime_pm_subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_business_metrics_overrides_company ON business_metrics_overrides(company, metric_key);
+CREATE INDEX IF NOT EXISTS idx_elk_peak_monthly_revenue_year_month ON elk_peak_monthly_revenue(year DESC, month DESC);
+CREATE INDEX IF NOT EXISTS idx_elk_peak_monthly_engagements_year_month ON elk_peak_monthly_engagements(year DESC, month DESC);
+CREATE INDEX IF NOT EXISTS idx_elk_peak_monthly_mrr_year_month ON elk_peak_monthly_mrr(year DESC, month DESC);
+CREATE INDEX IF NOT EXISTS idx_life_organizer_monthly_revenue_year_month ON life_organizer_monthly_revenue(year DESC, month DESC);
+CREATE INDEX IF NOT EXISTS idx_friendly_tech_monthly_metrics_year_month ON friendly_tech_monthly_metrics(year DESC, month DESC);
+CREATE INDEX IF NOT EXISTS idx_runtime_pm_monthly_metrics_year_month ON runtime_pm_monthly_metrics(year DESC, month DESC);
 
 -- ============================================
 -- Row Level Security (RLS)
@@ -179,6 +257,12 @@ ALTER TABLE friendly_tech_hoa_clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE runtime_pm_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE runtime_pm_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_metrics_overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE elk_peak_monthly_revenue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE elk_peak_monthly_engagements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE elk_peak_monthly_mrr ENABLE ROW LEVEL SECURITY;
+ALTER TABLE life_organizer_monthly_revenue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE friendly_tech_monthly_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE runtime_pm_monthly_metrics ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- RLS Policies (Development)
@@ -198,6 +282,12 @@ DROP POLICY IF EXISTS "Allow all for authenticated" ON friendly_tech_hoa_clients
 DROP POLICY IF EXISTS "Allow all for authenticated" ON runtime_pm_users;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON runtime_pm_subscriptions;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON business_metrics_overrides;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON elk_peak_monthly_revenue;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON elk_peak_monthly_engagements;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON elk_peak_monthly_mrr;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON life_organizer_monthly_revenue;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON friendly_tech_monthly_metrics;
+DROP POLICY IF EXISTS "Allow all for authenticated" ON runtime_pm_monthly_metrics;
 
 -- Read-only policies for all tables (writes go through admin-write edge function)
 CREATE POLICY "Allow read for all" ON admin_password FOR SELECT USING (true);
@@ -211,6 +301,12 @@ CREATE POLICY "Allow read for all" ON friendly_tech_hoa_clients FOR SELECT USING
 CREATE POLICY "Allow read for all" ON runtime_pm_users FOR SELECT USING (true);
 CREATE POLICY "Allow read for all" ON runtime_pm_subscriptions FOR SELECT USING (true);
 CREATE POLICY "Allow read for all" ON business_metrics_overrides FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON elk_peak_monthly_revenue FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON elk_peak_monthly_engagements FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON elk_peak_monthly_mrr FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON life_organizer_monthly_revenue FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON friendly_tech_monthly_metrics FOR SELECT USING (true);
+CREATE POLICY "Allow read for all" ON runtime_pm_monthly_metrics FOR SELECT USING (true);
 
 -- Note: Write operations (INSERT, UPDATE, DELETE) are handled by the admin-write edge function
 -- which validates admin credentials and domain restrictions before allowing writes

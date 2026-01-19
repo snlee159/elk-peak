@@ -104,6 +104,9 @@ serve(async (req) => {
       });
     }
 
+    // Debug logging (remove in production)
+    console.log("Received operation:", operation);
+
     // Domain already verified - use service role key for admin operations (bypasses RLS)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -153,11 +156,203 @@ serve(async (req) => {
         break;
 
       case "deleteQuarterGoal":
-        const { error: deleteError } = await supabase
+        const { error: deleteGoalError } = await supabase
           .from("quarter_goal")
           .delete()
           .eq("id", id);
-        error = deleteError;
+        error = deleteGoalError;
+        result = { success: true };
+        break;
+
+      case "logMonthlyRevenue":
+        const { table, year, month, revenueData } = data;
+        let monthlyResult;
+        let monthlyError;
+        
+        if (table === "elk_peak_monthly_revenue") {
+          const { data: upsertResult, error: upsertError } = await supabase
+            .from(table)
+            .upsert({
+              year,
+              month,
+              revenue: revenueData.revenue || 0,
+              notes: revenueData.notes || null,
+            }, {
+              onConflict: "year,month",
+            })
+            .select()
+            .single();
+          monthlyResult = upsertResult;
+          monthlyError = upsertError;
+        } else if (table === "life_organizer_monthly_revenue") {
+          const { data: upsertResult, error: upsertError } = await supabase
+            .from(table)
+            .upsert({
+              year,
+              month,
+              kdp_revenue: revenueData.kdp_revenue || 0,
+              notion_revenue: revenueData.notion_revenue || 0,
+              etsy_revenue: revenueData.etsy_revenue || 0,
+              gumroad_revenue: revenueData.gumroad_revenue || 0,
+              notes: revenueData.notes || null,
+            }, {
+              onConflict: "year,month",
+            })
+            .select()
+            .single();
+          monthlyResult = upsertResult;
+          monthlyError = upsertError;
+        } else if (table === "friendly_tech_monthly_metrics") {
+          const { data: upsertResult, error: upsertError } = await supabase
+            .from(table)
+            .upsert({
+              year,
+              month,
+              revenue: revenueData.revenue || 0,
+              tech_days: revenueData.tech_days || 0,
+              notes: revenueData.notes || null,
+            }, {
+              onConflict: "year,month",
+            })
+            .select()
+            .single();
+          monthlyResult = upsertResult;
+          monthlyError = upsertError;
+        } else if (table === "runtime_pm_monthly_metrics") {
+          const { data: upsertResult, error: upsertError } = await supabase
+            .from(table)
+            .upsert({
+              year,
+              month,
+              active_users: revenueData.active_users || 0,
+              revenue: revenueData.revenue || 0,
+              active_subscriptions: revenueData.active_subscriptions || 0,
+              notes: revenueData.notes || null,
+            }, {
+              onConflict: "year,month",
+            })
+            .select()
+            .single();
+          monthlyResult = upsertResult;
+          monthlyError = upsertError;
+        } else {
+          return new Response(
+            JSON.stringify({ error: "Invalid table for monthly revenue logging" }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+        result = monthlyResult;
+        error = monthlyError;
+        break;
+
+      case "logMonthlyEngagements":
+        const { year: engYear, month: engMonth, count } = data;
+        const { data: engResult, error: engError } = await supabase
+          .from("elk_peak_monthly_engagements")
+          .upsert({
+            year: engYear,
+            month: engMonth,
+            count: count || 0,
+            notes: data.notes || null,
+          }, {
+            onConflict: "year,month",
+          })
+          .select()
+          .single();
+        result = engResult;
+        error = engError;
+        break;
+
+      case "logMonthlyMRR":
+        const { year: mrrYear, month: mrrMonth, mrr } = data;
+        const { data: mrrResult, error: mrrError } = await supabase
+          .from("elk_peak_monthly_mrr")
+          .upsert({
+            year: mrrYear,
+            month: mrrMonth,
+            mrr: mrr || 0,
+            notes: data.notes || null,
+          }, {
+            onConflict: "year,month",
+          })
+          .select()
+          .single();
+        result = mrrResult;
+        error = mrrError;
+        break;
+
+      case "deleteMonthlyRevenue":
+        const { table: deleteTable, year: deleteYear, month: deleteMonth } = data;
+        let deleteRevenueResult;
+        let deleteRevenueError;
+        
+        if (deleteTable === "elk_peak_monthly_revenue") {
+          const { error: delError } = await supabase
+            .from(deleteTable)
+            .delete()
+            .eq("year", deleteYear)
+            .eq("month", deleteMonth);
+          deleteRevenueError = delError;
+          deleteRevenueResult = { success: true };
+        } else if (deleteTable === "life_organizer_monthly_revenue") {
+          const { error: delError } = await supabase
+            .from(deleteTable)
+            .delete()
+            .eq("year", deleteYear)
+            .eq("month", deleteMonth);
+          deleteRevenueError = delError;
+          deleteRevenueResult = { success: true };
+        } else if (deleteTable === "friendly_tech_monthly_metrics") {
+          const { error: delError } = await supabase
+            .from(deleteTable)
+            .delete()
+            .eq("year", deleteYear)
+            .eq("month", deleteMonth);
+          deleteRevenueError = delError;
+          deleteRevenueResult = { success: true };
+        } else if (deleteTable === "runtime_pm_monthly_metrics") {
+          const { error: delError } = await supabase
+            .from(deleteTable)
+            .delete()
+            .eq("year", deleteYear)
+            .eq("month", deleteMonth);
+          deleteRevenueError = delError;
+          deleteRevenueResult = { success: true };
+        } else {
+          return new Response(
+            JSON.stringify({ error: "Invalid table for deleting monthly revenue" }),
+            {
+              status: 400,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+        result = deleteRevenueResult;
+        error = deleteRevenueError;
+        break;
+
+      case "deleteMonthlyEngagements":
+        const { year: delEngYear, month: delEngMonth } = data;
+        const { error: delEngError } = await supabase
+          .from("elk_peak_monthly_engagements")
+          .delete()
+          .eq("year", delEngYear)
+          .eq("month", delEngMonth);
+        error = delEngError;
+        result = { success: true };
+        break;
+
+      case "deleteMonthlyMRR":
+        const { year: delMRRYear, month: delMRRMonth } = data;
+        const { error: delMRRError } = await supabase
+          .from("elk_peak_monthly_mrr")
+          .delete()
+          .eq("year", delMRRYear)
+          .eq("month", delMRRMonth);
+        error = delMRRError;
         result = { success: true };
         break;
 

@@ -6,6 +6,18 @@ import { Dialog } from "@/catalyst/dialog";
 import toast from "react-hot-toast";
 import { v4 as uuidv4 } from "uuid";
 import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import {
   getMetrics,
   listQuarterGoals,
   createQuarterGoal,
@@ -13,6 +25,12 @@ import {
   deleteQuarterGoal,
   updateMetricOverride,
   deleteMetricOverride,
+  logMonthlyRevenue,
+  logMonthlyEngagements,
+  logMonthlyMRR,
+  deleteMonthlyRevenue,
+  deleteMonthlyEngagements,
+  deleteMonthlyMRR,
 } from "@/services/api";
 
 export default function MetricsDashboard({ isAdmin = false }) {
@@ -29,6 +47,10 @@ export default function MetricsDashboard({ isAdmin = false }) {
   const [editValues, setEditValues] = useState({});
   const [editingMetric, setEditingMetric] = useState(null);
   const [metricEditValue, setMetricEditValue] = useState("");
+  const [showRevenueModal, setShowRevenueModal] = useState(false);
+  const [revenueModalData, setRevenueModalData] = useState({});
+  const [showEngagementModal, setShowEngagementModal] = useState(false);
+  const [engagementModalData, setEngagementModalData] = useState({});
 
   useEffect(() => {
     fetchMetrics();
@@ -54,9 +76,7 @@ export default function MetricsDashboard({ isAdmin = false }) {
           if (goal.metric_type === "elk_peak_mrr") {
             currentValue = metrics.elkPeak.monthlyRecurringRevenue || 0;
           } else if (goal.metric_type === "life_organizer_revenue") {
-            currentValue =
-              (metrics.lifeOrganizer.totalKDPRevenue || 0) +
-              (metrics.lifeOrganizer.totalNotionRevenue || 0);
+            currentValue = metrics.lifeOrganizer.totalRevenue || 0;
           } else if (goal.metric_type === "friendly_tech_revenue") {
             currentValue = metrics.friendlyTech.totalRevenue || 0;
           } else if (goal.metric_type === "runtime_pm_users") {
@@ -185,8 +205,19 @@ export default function MetricsDashboard({ isAdmin = false }) {
         toast.error("Please enter a valid number");
         return;
       }
-      await updateMetricOverride(company, metricKey, value);
-      toast.success("Metric updated");
+      
+      // Special handling for MRR - log it for the current month instead of overriding
+      if (company === "elkPeak" && metricKey === "monthlyRecurringRevenue") {
+        const now = new Date();
+        const year = metrics.elkPeak.currentMonthMRRYear || now.getFullYear();
+        const month = metrics.elkPeak.currentMonthMRRMonth || now.getMonth() + 1;
+        await logMonthlyMRR(year, month, value, "");
+        toast.success("MRR logged for current month");
+      } else {
+        await updateMetricOverride(company, metricKey, value);
+        toast.success("Metric updated");
+      }
+      
       setEditingMetric(null);
       setMetricEditValue("");
       fetchMetrics();
@@ -202,6 +233,276 @@ export default function MetricsDashboard({ isAdmin = false }) {
   const handleStartEdit = (company, metricKey, currentValue) => {
     setEditingMetric(`${company}:${metricKey}`);
     setMetricEditValue(currentValue.toString());
+  };
+
+  const openRevenueModal = (business, year = null, month = null) => {
+    const now = new Date();
+    const selectedYear = year || now.getFullYear();
+    const selectedMonth = month || now.getMonth() + 1;
+    
+    // Check if data already exists for this month/year
+    let existingData = {};
+    
+    if (business === "elkPeak") {
+      // Check for revenue data
+      if (metrics.elkPeak.monthlyRevenue) {
+        const existing = metrics.elkPeak.monthlyRevenue.find(
+          (m) => m.year === selectedYear && m.month === selectedMonth
+        );
+        if (existing) {
+          existingData.revenue = existing.revenue || 0;
+          existingData.revenueNotes = existing.notes || "";
+        }
+      }
+      // Check for engagement data
+      if (metrics.elkPeak.monthlyEngagements) {
+        const existing = metrics.elkPeak.monthlyEngagements.find(
+          (m) => m.year === selectedYear && m.month === selectedMonth
+        );
+        if (existing) {
+          existingData.engagementCount = existing.count || 0;
+          // Use engagement notes if revenue notes don't exist
+          if (!existingData.notes) {
+            existingData.notes = existing.notes || "";
+          }
+        }
+      }
+    } else if (business === "lifeOrganizer" && metrics.lifeOrganizer.monthlyRevenue) {
+      const existing = metrics.lifeOrganizer.monthlyRevenue.find(
+        (m) => m.year === selectedYear && m.month === selectedMonth
+      );
+      if (existing) {
+        existingData = {
+          kdp_revenue: existing.kdp_revenue || 0,
+          notion_revenue: existing.notion_revenue || 0,
+          etsy_revenue: existing.etsy_revenue || 0,
+          gumroad_revenue: existing.gumroad_revenue || 0,
+          notes: existing.notes || "",
+        };
+      }
+    } else if (business === "friendlyTech" && metrics.friendlyTech.monthlyMetrics) {
+      const existing = metrics.friendlyTech.monthlyMetrics.find(
+        (m) => m.year === selectedYear && m.month === selectedMonth
+      );
+      if (existing) {
+        existingData = {
+          revenue: existing.revenue || 0,
+          tech_days: existing.tech_days || 0,
+          notes: existing.notes || "",
+        };
+      }
+    } else if (business === "runtimePM" && metrics.runtimePM.monthlyMetrics) {
+      const existing = metrics.runtimePM.monthlyMetrics.find(
+        (m) => m.year === selectedYear && m.month === selectedMonth
+      );
+      if (existing) {
+        existingData = {
+          active_users: existing.active_users || 0,
+          revenue: existing.revenue || 0,
+          active_subscriptions: existing.active_subscriptions || 0,
+          notes: existing.notes || "",
+        };
+      }
+    }
+    
+    setRevenueModalData({
+      business,
+      year: selectedYear,
+      month: selectedMonth,
+      revenue: existingData.revenue || 0,
+      engagementCount: existingData.engagementCount || 0,
+      kdp_revenue: existingData.kdp_revenue || 0,
+      notion_revenue: existingData.notion_revenue || 0,
+      etsy_revenue: existingData.etsy_revenue || 0,
+      gumroad_revenue: existingData.gumroad_revenue || 0,
+      tech_days: existingData.tech_days || 0,
+      active_users: existingData.active_users || 0,
+      active_subscriptions: existingData.active_subscriptions || 0,
+      notes: existingData.notes || "",
+    });
+    setShowRevenueModal(true);
+  };
+
+  const openEngagementModal = (year = null, month = null) => {
+    const now = new Date();
+    const selectedYear = year || now.getFullYear();
+    const selectedMonth = month || now.getMonth() + 1;
+    
+    // Check if data already exists for this month/year
+    let existingData = {};
+    if (metrics.elkPeak.monthlyEngagements) {
+      const existing = metrics.elkPeak.monthlyEngagements.find(
+        (m) => m.year === selectedYear && m.month === selectedMonth
+      );
+      if (existing) {
+        existingData = {
+          count: existing.count || 0,
+          notes: existing.notes || "",
+        };
+      }
+    }
+    
+    setEngagementModalData({
+      year: selectedYear,
+      month: selectedMonth,
+      count: existingData.count || 0,
+      notes: existingData.notes || "",
+    });
+    setShowEngagementModal(true);
+  };
+
+
+  const handleSaveRevenue = async () => {
+    try {
+      const { business, year, month, engagementCount, ...revenueData } = revenueModalData;
+      let table;
+      
+      if (business === "elkPeak") {
+        table = "elk_peak_monthly_revenue";
+        // Save revenue
+        await logMonthlyRevenue(table, year, month, revenueData);
+        // Save engagements if provided (use same notes field)
+        if (engagementCount !== undefined) {
+          await logMonthlyEngagements(year, month, engagementCount || 0, revenueData.notes || "");
+        }
+        toast.success("Monthly metrics logged successfully");
+      } else if (business === "lifeOrganizer") {
+        table = "life_organizer_monthly_revenue";
+        await logMonthlyRevenue(table, year, month, revenueData);
+        toast.success("Monthly revenue logged successfully");
+      } else if (business === "friendlyTech") {
+        table = "friendly_tech_monthly_metrics";
+        await logMonthlyRevenue(table, year, month, revenueData);
+        toast.success("Monthly metrics logged successfully");
+      } else if (business === "runtimePM") {
+        table = "runtime_pm_monthly_metrics";
+        await logMonthlyRevenue(table, year, month, revenueData);
+        toast.success("Monthly metrics logged successfully");
+      }
+
+      setShowRevenueModal(false);
+      setRevenueModalData({});
+      fetchMetrics();
+    } catch (error) {
+      console.error("Error saving metrics:", error);
+      toast.error(error.message || "Failed to save metrics");
+    }
+  };
+
+  const handleSaveEngagement = async () => {
+    try {
+      const { year, month, count, notes } = engagementModalData;
+      await logMonthlyEngagements(year, month, count, notes);
+      toast.success("Monthly engagements logged successfully");
+      setShowEngagementModal(false);
+      setEngagementModalData({});
+      fetchMetrics();
+    } catch (error) {
+      console.error("Error saving engagement:", error);
+      toast.error(error.message || "Failed to save engagement");
+    }
+  };
+
+  const formatMonthLabel = (year, month) => {
+    const date = new Date(year, month - 1);
+    return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  };
+
+  const handleDeleteRevenue = async () => {
+    if (!confirm(`Are you sure you want to delete the metrics entry for ${formatMonthLabel(revenueModalData.year, revenueModalData.month)}?`)) {
+      return;
+    }
+    
+    try {
+      const { business, year, month } = revenueModalData;
+      let table;
+      
+      if (business === "elkPeak") {
+        table = "elk_peak_monthly_revenue";
+        // Delete both revenue and engagements for Elk Peak
+        await deleteMonthlyRevenue(table, year, month);
+        await deleteMonthlyEngagements(year, month);
+        toast.success("Monthly metrics deleted successfully");
+      } else if (business === "lifeOrganizer") {
+        table = "life_organizer_monthly_revenue";
+        await deleteMonthlyRevenue(table, year, month);
+        toast.success("Monthly revenue deleted successfully");
+      } else if (business === "friendlyTech") {
+        table = "friendly_tech_monthly_metrics";
+        await deleteMonthlyRevenue(table, year, month);
+        toast.success("Monthly metrics deleted successfully");
+      } else if (business === "runtimePM") {
+        table = "runtime_pm_monthly_metrics";
+        await deleteMonthlyRevenue(table, year, month);
+        toast.success("Monthly metrics deleted successfully");
+      }
+
+      setShowRevenueModal(false);
+      setRevenueModalData({});
+      fetchMetrics();
+    } catch (error) {
+      console.error("Error deleting metrics:", error);
+      toast.error(error.message || "Failed to delete metrics");
+    }
+  };
+
+  const handleDeleteEngagement = async () => {
+    if (!confirm(`Are you sure you want to delete the engagement entry for ${formatMonthLabel(engagementModalData.year, engagementModalData.month)}?`)) {
+      return;
+    }
+    
+    try {
+      const { year, month } = engagementModalData;
+      await deleteMonthlyEngagements(year, month);
+      toast.success("Monthly engagements deleted successfully");
+      setShowEngagementModal(false);
+      setEngagementModalData({});
+      fetchMetrics();
+    } catch (error) {
+      console.error("Error deleting engagement:", error);
+      toast.error(error.message || "Failed to delete engagement");
+    }
+  };
+
+  const getMonthName = (monthNumber) => {
+    const date = new Date(2000, monthNumber - 1);
+    return date.toLocaleDateString("en-US", { month: "long" });
+  };
+
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    value: i + 1,
+    label: getMonthName(i + 1),
+  }));
+
+  const prepareChartData = (monthlyData, valueKey) => {
+    if (!monthlyData || monthlyData.length === 0) return [];
+    return monthlyData
+      .slice()
+      .reverse()
+      .map((item) => ({
+        month: formatMonthLabel(item.year, item.month),
+        value: item[valueKey] || 0,
+      }));
+  };
+
+  const prepareMultiSeriesChartData = (monthlyData, keys) => {
+    if (!monthlyData || monthlyData.length === 0) return [];
+    return monthlyData
+      .slice()
+      .reverse()
+      .map((item) => {
+        const data = {
+          month: formatMonthLabel(item.year, item.month),
+        };
+        keys.forEach((key) => {
+          data[key] = item[key] || 0;
+        });
+        // Calculate total if this is Life Organizer data
+        if (keys.includes("kdp_revenue") && keys.includes("notion_revenue") && keys.includes("etsy_revenue") && keys.includes("gumroad_revenue")) {
+          data.total = (item.kdp_revenue || 0) + (item.notion_revenue || 0) + (item.etsy_revenue || 0) + (item.gumroad_revenue || 0);
+        }
+        return data;
+      });
   };
 
   if (isLoading) {
@@ -322,13 +623,24 @@ export default function MetricsDashboard({ isAdmin = false }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Elk Peak Consulting */}
           <Card className="h-full flex flex-col !max-w-none">
-            <CardTitle>Elk Peak Consulting</CardTitle>
+            <CardTitle className="flex justify-between items-center">
+              <span>Elk Peak Consulting</span>
+              {isAdmin && (
+                <Button
+                  onClick={() => openRevenueModal("elkPeak")}
+                  outline
+                  className="text-xs ml-6"
+                >
+                  Log Monthly Metrics
+                </Button>
+              )}
+            </CardTitle>
             <CardBody className="flex-1 flex flex-col justify-between">
               <div className="space-y-4">
                 <MetricRow
                   isAdmin={isAdmin}
                   value={metrics.elkPeak.activeClients || 0}
-                  label="Active Clients"
+                  label="Number of Clients"
                   formatValue={formatNumber}
                   company="elkPeak"
                   metricKey="activeClients"
@@ -341,8 +653,22 @@ export default function MetricsDashboard({ isAdmin = false }) {
                 />
                 <MetricRow
                   isAdmin={isAdmin}
+                  value={metrics.elkPeak.recurringClients || 0}
+                  label="Number of Recurring Clients"
+                  formatValue={formatNumber}
+                  company="elkPeak"
+                  metricKey="recurringClients"
+                  editingMetric={editingMetric}
+                  setEditingMetric={setEditingMetric}
+                  metricEditValue={metricEditValue}
+                  setMetricEditValue={setMetricEditValue}
+                  onSave={handleSaveMetric}
+                  handleStartEdit={handleStartEdit}
+                />
+                <MetricRow
+                  isAdmin={isAdmin}
                   value={metrics.elkPeak.monthlyRecurringRevenue || 0}
-                  label="Monthly Recurring Revenue"
+                  label={`Current MRR${metrics.elkPeak.currentMonthMRRYear && metrics.elkPeak.currentMonthMRRMonth ? ` (${formatMonthLabel(metrics.elkPeak.currentMonthMRRYear, metrics.elkPeak.currentMonthMRRMonth)})` : ""}`}
                   formatValue={formatCurrency}
                   company="elkPeak"
                   metricKey="monthlyRecurringRevenue"
@@ -353,121 +679,206 @@ export default function MetricsDashboard({ isAdmin = false }) {
                   onSave={handleSaveMetric}
                   handleStartEdit={handleStartEdit}
                 />
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.elkPeak.totalRevenue || 0}
-                  label="Total Revenue"
-                  formatValue={formatCurrency}
-                  company="elkPeak"
-                  metricKey="totalRevenue"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.elkPeak.totalProjects || 0}
-                  label="Total Projects"
-                  formatValue={formatNumber}
-                  company="elkPeak"
-                  metricKey="totalProjects"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
+                <div>
+                  <div className="text-2xl font-bold text-zinc-950 dark:text-white">
+                    {formatCurrency(metrics.elkPeak.totalRevenue || 0)}
+                  </div>
+                  <Text className="text-sm">Total Revenue</Text>
+                </div>
+                {metrics.elkPeak.monthlyRevenue && metrics.elkPeak.monthlyRevenue.length > 0 && (
+                  <div className="mt-4">
+                    <Text className="text-sm font-semibold mb-2">Monthly Revenue</Text>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={prepareChartData(metrics.elkPeak.monthlyRevenue, "revenue")}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip formatter={(value) => formatCurrency(value)} />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#8884d8"
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                {metrics.elkPeak.monthlyMRR && metrics.elkPeak.monthlyMRR.length > 0 && (
+                  <div className="mt-4">
+                    <Text className="text-sm font-semibold mb-2">Monthly MRR</Text>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={prepareChartData(metrics.elkPeak.monthlyMRR, "mrr")}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip formatter={(value) => formatCurrency(value)} />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#82ca9d"
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                {metrics.elkPeak.monthlyEngagements && metrics.elkPeak.monthlyEngagements.length > 0 && (
+                  <div className="mt-4">
+                    <Text className="text-sm font-semibold mb-2">One-Off Engagements per Month</Text>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={prepareChartData(metrics.elkPeak.monthlyEngagements, "count")}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="value" fill="#8884d8" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
             </CardBody>
           </Card>
 
           {/* Life Organizer Guru */}
           <Card className="h-full flex flex-col !max-w-none">
-            <CardTitle>Life Organizer Guru</CardTitle>
+            <CardTitle className="flex justify-between items-center">
+              <span>Life Organizer Guru</span>
+              {isAdmin && (
+                <Button
+                  onClick={() => openRevenueModal("lifeOrganizer")}
+                  outline
+                  className="text-xs ml-6"
+                >
+                  Log Monthly Metrics
+                </Button>
+              )}
+            </CardTitle>
             <CardBody className="flex-1 flex flex-col justify-between">
               <div className="space-y-4">
                 <div>
                   <div className="text-2xl font-bold text-zinc-950 dark:text-white">
-                    {formatCurrency(
-                      (metrics.lifeOrganizer.totalKDPRevenue || 0) +
-                        (metrics.lifeOrganizer.totalNotionRevenue || 0)
-                    )}
+                    {formatCurrency(metrics.lifeOrganizer.totalRevenue || 0)}
                   </div>
                   <Text className="text-sm">Total Revenue</Text>
                 </div>
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.lifeOrganizer.totalKDPRevenue || 0}
-                  label="KDP Revenue"
-                  formatValue={formatCurrency}
-                  company="lifeOrganizer"
-                  metricKey="totalKDPRevenue"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.lifeOrganizer.totalNotionRevenue || 0}
-                  label="Notion Templates Revenue"
-                  formatValue={formatCurrency}
-                  company="lifeOrganizer"
-                  metricKey="totalNotionRevenue"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.lifeOrganizer.activeRuntimePMUsers || 0}
-                  label="Active Runtime PM Users"
-                  formatValue={formatNumber}
-                  company="lifeOrganizer"
-                  metricKey="activeRuntimePMUsers"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
+                <div>
+                  <Text className="text-sm font-semibold mb-2">Revenue Breakdown</Text>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>KDP Revenue:</span>
+                      <span className="font-semibold">
+                        {formatCurrency(metrics.lifeOrganizer.totalKDPRevenue || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Notion Templates:</span>
+                      <span className="font-semibold">
+                        {formatCurrency(metrics.lifeOrganizer.totalNotionRevenue || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Etsy Revenue:</span>
+                      <span className="font-semibold">
+                        {formatCurrency(metrics.lifeOrganizer.totalEtsyRevenue || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Gumroad Revenue:</span>
+                      <span className="font-semibold">
+                        {formatCurrency(metrics.lifeOrganizer.totalGumroadRevenue || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {metrics.lifeOrganizer.monthlyRevenue && metrics.lifeOrganizer.monthlyRevenue.length > 0 && (
+                  <div className="mt-4">
+                    <Text className="text-sm font-semibold mb-2">Monthly Revenue by Source</Text>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <LineChart
+                        data={prepareMultiSeriesChartData(metrics.lifeOrganizer.monthlyRevenue, [
+                          "kdp_revenue",
+                          "notion_revenue",
+                          "etsy_revenue",
+                          "gumroad_revenue",
+                        ])}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip formatter={(value) => formatCurrency(value)} />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="kdp_revenue"
+                          stroke="#8884d8"
+                          strokeWidth={2}
+                          name="KDP"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="notion_revenue"
+                          stroke="#82ca9d"
+                          strokeWidth={2}
+                          name="Notion"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="etsy_revenue"
+                          stroke="#ffc658"
+                          strokeWidth={2}
+                          name="Etsy"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="gumroad_revenue"
+                          stroke="#ff7300"
+                          strokeWidth={2}
+                          name="Gumroad"
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="total"
+                          stroke="#000000"
+                          strokeWidth={3}
+                          strokeDasharray="5 5"
+                          name="Total Revenue"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
             </CardBody>
           </Card>
 
           {/* The Friendly Tech Help */}
           <Card className="h-full flex flex-col !max-w-none">
-            <CardTitle>The Friendly Tech Help</CardTitle>
+            <CardTitle className="flex justify-between items-center">
+              <span>The Friendly Tech Help</span>
+              {isAdmin && (
+                <Button
+                  onClick={() => openRevenueModal("friendlyTech")}
+                  outline
+                  className="text-xs ml-6"
+                >
+                  Log Monthly Metrics
+                </Button>
+              )}
+            </CardTitle>
             <CardBody className="flex-1 flex flex-col justify-between">
               <div className="space-y-4">
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.friendlyTech.totalRevenue || 0}
-                  label="Total Revenue"
-                  formatValue={formatCurrency}
-                  company="friendlyTech"
-                  metricKey="totalRevenue"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
+                <div>
+                  <div className="text-2xl font-bold text-zinc-950 dark:text-white">
+                    {formatCurrency(metrics.friendlyTech.totalRevenue || 0)}
+                  </div>
+                  <Text className="text-sm">Total Revenue</Text>
+                </div>
                 <MetricRow
                   isAdmin={isAdmin}
                   value={metrics.friendlyTech.activeHOAClients || 0}
-                  label="Active HOA Clients"
+                  label="Number of Active HOA Clients"
                   formatValue={formatNumber}
                   company="friendlyTech"
                   metricKey="activeHOAClients"
@@ -478,71 +889,136 @@ export default function MetricsDashboard({ isAdmin = false }) {
                   onSave={handleSaveMetric}
                   handleStartEdit={handleStartEdit}
                 />
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.friendlyTech.totalSessions || 0}
-                  label="Total Tech Days"
-                  formatValue={formatNumber}
-                  company="friendlyTech"
-                  metricKey="totalSessions"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
+                {metrics.friendlyTech.monthlyMetrics && metrics.friendlyTech.monthlyMetrics.length > 0 && (
+                  <>
+                    <div>
+                      <div className="text-2xl font-bold text-zinc-950 dark:text-white">
+                        {formatNumber(metrics.friendlyTech.monthlyMetrics[0].tech_days || 0)}
+                      </div>
+                      <Text className="text-sm">
+                        Tech Days This Month ({formatMonthLabel(
+                          metrics.friendlyTech.monthlyMetrics[0].year,
+                          metrics.friendlyTech.monthlyMetrics[0].month
+                        )})
+                      </Text>
+                    </div>
+                    <div className="mt-4">
+                      <Text className="text-sm font-semibold mb-2">Monthly Revenue</Text>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart
+                          data={prepareChartData(metrics.friendlyTech.monthlyMetrics, "revenue")}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip formatter={(value) => formatCurrency(value)} />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#8884d8"
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4">
+                      <Text className="text-sm font-semibold mb-2">Tech Days per Month</Text>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart
+                          data={prepareChartData(metrics.friendlyTech.monthlyMetrics, "tech_days")}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip />
+                          <Bar dataKey="value" fill="#8884d8" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </>
+                )}
               </div>
             </CardBody>
           </Card>
 
           {/* Runtime PM */}
           <Card className="h-full flex flex-col !max-w-none">
-            <CardTitle>Runtime PM</CardTitle>
+            <CardTitle className="flex justify-between items-center">
+              <span>Runtime PM</span>
+              {isAdmin && (
+                <Button
+                  onClick={() => openRevenueModal("runtimePM")}
+                  outline
+                  className="text-xs ml-6"
+                >
+                  Log Monthly Metrics
+                </Button>
+              )}
+            </CardTitle>
             <CardBody className="flex-1 flex flex-col justify-between">
               <div className="space-y-4">
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.runtimePM.activeUsers || 0}
-                  label="Active Users"
-                  formatValue={formatNumber}
-                  company="runtimePM"
-                  metricKey="activeUsers"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.runtimePM.monthlyRecurringRevenue || 0}
-                  label="Monthly Recurring Revenue"
-                  formatValue={formatCurrency}
-                  company="runtimePM"
-                  metricKey="monthlyRecurringRevenue"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
-                <MetricRow
-                  isAdmin={isAdmin}
-                  value={metrics.runtimePM.totalSubscriptions || 0}
-                  label="Active Subscriptions"
-                  formatValue={formatNumber}
-                  company="runtimePM"
-                  metricKey="totalSubscriptions"
-                  editingMetric={editingMetric}
-                  setEditingMetric={setEditingMetric}
-                  metricEditValue={metricEditValue}
-                  setMetricEditValue={setMetricEditValue}
-                  onSave={handleSaveMetric}
-                  handleStartEdit={handleStartEdit}
-                />
+                <div>
+                  <div className="text-2xl font-bold text-zinc-950 dark:text-white">
+                    {formatCurrency(metrics.runtimePM.totalRevenue || 0)}
+                  </div>
+                  <Text className="text-sm">Total Revenue</Text>
+                </div>
+                {metrics.runtimePM.monthlyMetrics && metrics.runtimePM.monthlyMetrics.length > 0 && (
+                  <>
+                    <div className="mt-4">
+                      <Text className="text-sm font-semibold mb-2">Active Users by Month</Text>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart
+                          data={prepareChartData(metrics.runtimePM.monthlyMetrics, "active_users")}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#8884d8"
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4">
+                      <Text className="text-sm font-semibold mb-2">Monthly Revenue</Text>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart
+                          data={prepareChartData(metrics.runtimePM.monthlyMetrics, "revenue")}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip formatter={(value) => formatCurrency(value)} />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#82ca9d"
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4">
+                      <Text className="text-sm font-semibold mb-2">Active Subscriptions per Month</Text>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart
+                          data={prepareChartData(metrics.runtimePM.monthlyMetrics, "active_subscriptions")}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip />
+                          <Bar dataKey="value" fill="#8884d8" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </>
+                )}
               </div>
             </CardBody>
           </Card>
@@ -635,6 +1111,511 @@ export default function MetricsDashboard({ isAdmin = false }) {
                   Cancel
                 </Button>
                 <Button onClick={handleSaveGoal}>Save</Button>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+
+        {/* Monthly Revenue Modal */}
+        <Dialog open={showRevenueModal} onClose={() => setShowRevenueModal(false)}>
+          <div className="p-6">
+            <Heading className="mb-4">
+              {revenueModalData.year && revenueModalData.month && 
+               ((revenueModalData.business === "elkPeak" && (metrics.elkPeak.monthlyRevenue?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month) || metrics.elkPeak.monthlyEngagements?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month))) ||
+                (revenueModalData.business === "lifeOrganizer" && metrics.lifeOrganizer.monthlyRevenue?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month)) ||
+                (revenueModalData.business === "friendlyTech" && metrics.friendlyTech.monthlyMetrics?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month)) ||
+                (revenueModalData.business === "runtimePM" && metrics.runtimePM.monthlyMetrics?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month)))
+                ? "Edit Monthly Metrics"
+                : "Log Monthly Metrics"}
+            </Heading>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field>
+                  <Label>Year</Label>
+                  <Input
+                    type="number"
+                    value={revenueModalData.year || ""}
+                    onChange={(e) => {
+                      const newYear = parseInt(e.target.value);
+                      const month = revenueModalData.month;
+                      const business = revenueModalData.business;
+                      
+                      // Find existing data for new year/month
+                      let existingData = {};
+                      if (month && business === "elkPeak") {
+                        if (metrics.elkPeak.monthlyRevenue) {
+                          const existing = metrics.elkPeak.monthlyRevenue.find(
+                            (m) => m.year === newYear && m.month === month
+                          );
+                          if (existing) {
+                            existingData.revenue = existing.revenue || 0;
+                            existingData.notes = existing.notes || "";
+                          }
+                        }
+                        if (metrics.elkPeak.monthlyEngagements) {
+                          const existing = metrics.elkPeak.monthlyEngagements.find(
+                            (m) => m.year === newYear && m.month === month
+                          );
+                          if (existing) {
+                            existingData.engagementCount = existing.count || 0;
+                            existingData.engagementNotes = existing.notes || "";
+                          }
+                        }
+                      } else if (month && business === "lifeOrganizer" && metrics.lifeOrganizer.monthlyRevenue) {
+                        const existing = metrics.lifeOrganizer.monthlyRevenue.find(
+                          (m) => m.year === newYear && m.month === month
+                        );
+                        if (existing) {
+                          existingData = {
+                            kdp_revenue: existing.kdp_revenue || 0,
+                            notion_revenue: existing.notion_revenue || 0,
+                            etsy_revenue: existing.etsy_revenue || 0,
+                            gumroad_revenue: existing.gumroad_revenue || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      } else if (month && business === "friendlyTech" && metrics.friendlyTech.monthlyMetrics) {
+                        const existing = metrics.friendlyTech.monthlyMetrics.find(
+                          (m) => m.year === newYear && m.month === month
+                        );
+                        if (existing) {
+                          existingData = {
+                            revenue: existing.revenue || 0,
+                            tech_days: existing.tech_days || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      } else if (month && business === "runtimePM" && metrics.runtimePM.monthlyMetrics) {
+                        const existing = metrics.runtimePM.monthlyMetrics.find(
+                          (m) => m.year === newYear && m.month === month
+                        );
+                        if (existing) {
+                          existingData = {
+                            active_users: existing.active_users || 0,
+                            revenue: existing.revenue || 0,
+                            active_subscriptions: existing.active_subscriptions || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      }
+                      
+                      setRevenueModalData({
+                        ...revenueModalData,
+                        year: newYear,
+                        ...existingData,
+                      });
+                    }}
+                  />
+                </Field>
+                <Field>
+                  <Label>Month</Label>
+                  <select
+                    value={revenueModalData.month || ""}
+                    onChange={(e) => {
+                      const newMonth = parseInt(e.target.value);
+                      const year = revenueModalData.year;
+                      const business = revenueModalData.business;
+                      
+                      // Find existing data for year/new month
+                      let existingData = {};
+                      if (year && business === "elkPeak") {
+                        if (metrics.elkPeak.monthlyRevenue) {
+                          const existing = metrics.elkPeak.monthlyRevenue.find(
+                            (m) => m.year === year && m.month === newMonth
+                          );
+                          if (existing) {
+                            existingData.revenue = existing.revenue || 0;
+                            existingData.notes = existing.notes || "";
+                          }
+                        }
+                        if (metrics.elkPeak.monthlyEngagements) {
+                          const existing = metrics.elkPeak.monthlyEngagements.find(
+                            (m) => m.year === year && m.month === newMonth
+                          );
+                          if (existing) {
+                            existingData.engagementCount = existing.count || 0;
+                            if (!existingData.notes) {
+                              existingData.notes = existing.notes || "";
+                            }
+                          }
+                        }
+                      } else if (year && business === "lifeOrganizer" && metrics.lifeOrganizer.monthlyRevenue) {
+                        const existing = metrics.lifeOrganizer.monthlyRevenue.find(
+                          (m) => m.year === year && m.month === newMonth
+                        );
+                        if (existing) {
+                          existingData = {
+                            kdp_revenue: existing.kdp_revenue || 0,
+                            notion_revenue: existing.notion_revenue || 0,
+                            etsy_revenue: existing.etsy_revenue || 0,
+                            gumroad_revenue: existing.gumroad_revenue || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      } else if (year && business === "friendlyTech" && metrics.friendlyTech.monthlyMetrics) {
+                        const existing = metrics.friendlyTech.monthlyMetrics.find(
+                          (m) => m.year === year && m.month === newMonth
+                        );
+                        if (existing) {
+                          existingData = {
+                            revenue: existing.revenue || 0,
+                            tech_days: existing.tech_days || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      } else if (year && business === "runtimePM" && metrics.runtimePM.monthlyMetrics) {
+                        const existing = metrics.runtimePM.monthlyMetrics.find(
+                          (m) => m.year === year && m.month === newMonth
+                        );
+                        if (existing) {
+                          existingData = {
+                            active_users: existing.active_users || 0,
+                            revenue: existing.revenue || 0,
+                            active_subscriptions: existing.active_subscriptions || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      }
+                      
+                      setRevenueModalData({
+                        ...revenueModalData,
+                        month: newMonth,
+                        ...existingData,
+                      });
+                    }}
+                    className="w-full rounded-md border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2"
+                  >
+                    <option value="">Select month</option>
+                    {months.map((month) => (
+                      <option key={month.value} value={month.value}>
+                        {month.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {revenueModalData.business === "elkPeak" && (
+                <>
+                  <Field>
+                    <Label>Revenue</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={revenueModalData.revenue || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          revenue: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <Label>One-Off Engagements</Label>
+                    <Input
+                      type="number"
+                      value={revenueModalData.engagementCount || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          engagementCount: parseInt(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                </>
+              )}
+              {revenueModalData.business === "lifeOrganizer" && (
+                <>
+                  <Field>
+                    <Label>KDP Revenue</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={revenueModalData.kdp_revenue || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          kdp_revenue: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <Label>Notion Templates Revenue</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={revenueModalData.notion_revenue || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          notion_revenue: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <Label>Etsy Revenue</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={revenueModalData.etsy_revenue || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          etsy_revenue: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <Label>Gumroad Revenue</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={revenueModalData.gumroad_revenue || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          gumroad_revenue: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                </>
+              )}
+              {revenueModalData.business === "friendlyTech" && (
+                <>
+                  <Field>
+                    <Label>Revenue</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={revenueModalData.revenue || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          revenue: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <Label>Tech Days</Label>
+                    <Input
+                      type="number"
+                      value={revenueModalData.tech_days || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          tech_days: parseInt(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                </>
+              )}
+              {revenueModalData.business === "runtimePM" && (
+                <>
+                  <Field>
+                    <Label>Active Users</Label>
+                    <Input
+                      type="number"
+                      value={revenueModalData.active_users || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          active_users: parseInt(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <Label>Revenue</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={revenueModalData.revenue || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          revenue: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <Label>Active Subscriptions</Label>
+                    <Input
+                      type="number"
+                      value={revenueModalData.active_subscriptions || ""}
+                      onChange={(e) =>
+                        setRevenueModalData({
+                          ...revenueModalData,
+                          active_subscriptions: parseInt(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </Field>
+                </>
+              )}
+              <Field>
+                <Label>Notes (optional)</Label>
+                <Input
+                  value={revenueModalData.notes || ""}
+                  onChange={(e) =>
+                    setRevenueModalData({
+                      ...revenueModalData,
+                      notes: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <div className="flex gap-2 justify-end">
+                {revenueModalData.year && revenueModalData.month && 
+                 ((revenueModalData.business === "elkPeak" && (metrics.elkPeak.monthlyRevenue?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month) || metrics.elkPeak.monthlyEngagements?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month))) ||
+                  (revenueModalData.business === "lifeOrganizer" && metrics.lifeOrganizer.monthlyRevenue?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month)) ||
+                  (revenueModalData.business === "friendlyTech" && metrics.friendlyTech.monthlyMetrics?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month)) ||
+                  (revenueModalData.business === "runtimePM" && metrics.runtimePM.monthlyMetrics?.some(m => m.year === revenueModalData.year && m.month === revenueModalData.month))) && (
+                  <Button 
+                    onClick={handleDeleteRevenue} 
+                    outline
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    Delete
+                  </Button>
+                )}
+                <Button onClick={() => setShowRevenueModal(false)} outline>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveRevenue}>Save</Button>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+
+        {/* Monthly Engagement Modal */}
+        <Dialog open={showEngagementModal} onClose={() => setShowEngagementModal(false)}>
+          <div className="p-6">
+            <Heading className="mb-4">
+              {engagementModalData.year && engagementModalData.month &&
+               metrics.elkPeak.monthlyEngagements?.some(m => m.year === engagementModalData.year && m.month === engagementModalData.month)
+                ? "Edit Monthly One-Off Engagements"
+                : "Log Monthly One-Off Engagements"}
+            </Heading>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field>
+                  <Label>Year</Label>
+                  <Input
+                    type="number"
+                    value={engagementModalData.year || ""}
+                    onChange={(e) => {
+                      const newYear = parseInt(e.target.value);
+                      const month = engagementModalData.month;
+                      
+                      // Find existing data for new year/month
+                      let existingData = {};
+                      if (month && metrics.elkPeak.monthlyEngagements) {
+                        const existing = metrics.elkPeak.monthlyEngagements.find(
+                          (m) => m.year === newYear && m.month === month
+                        );
+                        if (existing) {
+                          existingData = {
+                            count: existing.count || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      }
+                      
+                      setEngagementModalData({
+                        ...engagementModalData,
+                        year: newYear,
+                        ...existingData,
+                      });
+                    }}
+                  />
+                </Field>
+                <Field>
+                  <Label>Month</Label>
+                  <select
+                    value={engagementModalData.month || ""}
+                    onChange={(e) => {
+                      const newMonth = parseInt(e.target.value);
+                      const year = engagementModalData.year;
+                      
+                      // Find existing data for year/new month
+                      let existingData = {};
+                      if (year && metrics.elkPeak.monthlyEngagements) {
+                        const existing = metrics.elkPeak.monthlyEngagements.find(
+                          (m) => m.year === year && m.month === newMonth
+                        );
+                        if (existing) {
+                          existingData = {
+                            count: existing.count || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      }
+                      
+                      setEngagementModalData({
+                        ...engagementModalData,
+                        month: newMonth,
+                        ...existingData,
+                      });
+                    }}
+                    className="w-full rounded-md border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2"
+                  >
+                    <option value="">Select month</option>
+                    {months.map((month) => (
+                      <option key={month.value} value={month.value}>
+                        {month.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <Field>
+                <Label>Number of Engagements</Label>
+                <Input
+                  type="number"
+                  value={engagementModalData.count || ""}
+                  onChange={(e) =>
+                    setEngagementModalData({
+                      ...engagementModalData,
+                      count: parseInt(e.target.value) || 0,
+                    })
+                  }
+                />
+              </Field>
+              <Field>
+                <Label>Notes (optional)</Label>
+                <Input
+                  value={engagementModalData.notes || ""}
+                  onChange={(e) =>
+                    setEngagementModalData({
+                      ...engagementModalData,
+                      notes: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <div className="flex gap-2 justify-end">
+                {engagementModalData.year && engagementModalData.month &&
+                 metrics.elkPeak.monthlyEngagements?.some(m => m.year === engagementModalData.year && m.month === engagementModalData.month) && (
+                  <Button 
+                    onClick={handleDeleteEngagement} 
+                    outline
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    Delete
+                  </Button>
+                )}
+                <Button onClick={() => setShowEngagementModal(false)} outline>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveEngagement}>Save</Button>
               </div>
             </div>
           </div>

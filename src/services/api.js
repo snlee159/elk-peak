@@ -64,6 +64,7 @@ function applyOverrides(metrics, overrides) {
     elkPeak: {
       ...metrics.elkPeak,
       activeClients: applyOverride("elkPeak", "activeClients", metrics.elkPeak.activeClients),
+      recurringClients: applyOverride("elkPeak", "recurringClients", metrics.elkPeak.recurringClients),
       monthlyRecurringRevenue: applyOverride("elkPeak", "monthlyRecurringRevenue", metrics.elkPeak.monthlyRecurringRevenue),
       totalRevenue: applyOverride("elkPeak", "totalRevenue", metrics.elkPeak.totalRevenue),
       totalProjects: applyOverride("elkPeak", "totalProjects", metrics.elkPeak.totalProjects),
@@ -72,6 +73,9 @@ function applyOverrides(metrics, overrides) {
       ...metrics.lifeOrganizer,
       totalKDPRevenue: applyOverride("lifeOrganizer", "totalKDPRevenue", metrics.lifeOrganizer.totalKDPRevenue),
       totalNotionRevenue: applyOverride("lifeOrganizer", "totalNotionRevenue", metrics.lifeOrganizer.totalNotionRevenue),
+      totalEtsyRevenue: applyOverride("lifeOrganizer", "totalEtsyRevenue", metrics.lifeOrganizer.totalEtsyRevenue),
+      totalGumroadRevenue: applyOverride("lifeOrganizer", "totalGumroadRevenue", metrics.lifeOrganizer.totalGumroadRevenue),
+      totalRevenue: applyOverride("lifeOrganizer", "totalRevenue", metrics.lifeOrganizer.totalRevenue),
       activeRuntimePMUsers: applyOverride("lifeOrganizer", "activeRuntimePMUsers", metrics.lifeOrganizer.activeRuntimePMUsers),
     },
     friendlyTech: {
@@ -85,6 +89,7 @@ function applyOverrides(metrics, overrides) {
       activeUsers: applyOverride("runtimePM", "activeUsers", metrics.runtimePM.activeUsers),
       monthlyRecurringRevenue: applyOverride("runtimePM", "monthlyRecurringRevenue", metrics.runtimePM.monthlyRecurringRevenue),
       totalSubscriptions: applyOverride("runtimePM", "totalSubscriptions", metrics.runtimePM.totalSubscriptions),
+      totalRevenue: applyOverride("runtimePM", "totalRevenue", metrics.runtimePM.totalRevenue),
     },
   };
 }
@@ -112,114 +117,131 @@ export async function getMetrics() {
 
 // Elk Peak Consulting Metrics
 async function getElkPeakMetrics() {
-  const { data: clients } = await supabase
-    .from("elk_peak_clients")
-    .select("*");
+  const [clients, projects, monthlyRevenue, monthlyEngagements, monthlyMRR] = await Promise.all([
+    supabase.from("elk_peak_clients").select("*"),
+    supabase.from("elk_peak_projects").select("*"),
+    supabase.from("elk_peak_monthly_revenue").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
+    supabase.from("elk_peak_monthly_engagements").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
+    supabase.from("elk_peak_monthly_mrr").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
+  ]);
 
-  const { data: projects } = await supabase
-    .from("elk_peak_projects")
-    .select("*");
-
-  const activeClients = clients?.filter((c) => c.status === "active").length || 0;
-  const totalRevenue =
-    projects?.reduce((sum, p) => sum + (p.revenue || 0), 0) || 0;
-  const monthlyRecurringRevenue =
-    clients?.reduce((sum, c) => sum + (c.monthly_revenue || 0), 0) || 0;
+  const activeClients = clients.data?.filter((c) => c.status === "active").length || 0;
+  const recurringClients = clients.data?.filter((c) => c.status === "active" && (c.monthly_revenue || 0) > 0).length || 0;
+  
+  // Calculate total revenue from monthly logs
+  const totalRevenue = monthlyRevenue.data?.reduce((sum, m) => sum + (m.revenue || 0), 0) || 0;
+  
+  // Get current month MRR from MRR logs (most recent month)
+  const currentMonthMRR = monthlyMRR.data?.[0]?.mrr || 0;
+  const currentMonthMRRYear = monthlyMRR.data?.[0]?.year;
+  const currentMonthMRRMonth = monthlyMRR.data?.[0]?.month;
+  
+  // Fallback to client-based MRR if no monthly MRR logs
+  const monthlyRecurringRevenue = currentMonthMRR > 0 
+    ? currentMonthMRR 
+    : clients.data?.reduce((sum, c) => sum + (c.monthly_revenue || 0), 0) || 0;
 
   return {
     activeClients,
+    recurringClients,
     totalRevenue,
     monthlyRecurringRevenue,
-    totalProjects: projects?.length || 0,
-    clients: clients || [],
-    projects: projects || [],
+    currentMonthMRRYear,
+    currentMonthMRRMonth,
+    totalProjects: projects.data?.length || 0,
+    clients: clients.data || [],
+    projects: projects.data || [],
+    monthlyRevenue: monthlyRevenue.data || [],
+    monthlyEngagements: monthlyEngagements.data || [],
+    monthlyMRR: monthlyMRR.data || [],
   };
 }
 
 // Life Organizer Guru Metrics
 async function getLifeOrganizerMetrics() {
-  const { data: kdpSales } = await supabase
-    .from("life_organizer_kdp_sales")
-    .select("*")
-    .order("date", { ascending: false })
-    .limit(30);
+  const [kdpSales, notionSales, runtimePMUsers, monthlyRevenue] = await Promise.all([
+    supabase.from("life_organizer_kdp_sales").select("*").order("date", { ascending: false }).limit(30),
+    supabase.from("life_organizer_notion_sales").select("*").order("date", { ascending: false }).limit(30),
+    supabase.from("runtime_pm_users").select("*"),
+    supabase.from("life_organizer_monthly_revenue").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
+  ]);
 
-  const { data: notionSales } = await supabase
-    .from("life_organizer_notion_sales")
-    .select("*")
-    .order("date", { ascending: false })
-    .limit(30);
-
-  const { data: runtimePMUsers } = await supabase
-    .from("runtime_pm_users")
-    .select("*");
-
-  const totalKDPRevenue =
-    kdpSales?.reduce((sum, s) => sum + (s.revenue || 0), 0) || 0;
-  const totalNotionRevenue =
-    notionSales?.reduce((sum, s) => sum + (s.revenue || 0), 0) || 0;
+  // Calculate totals from monthly revenue logs
+  const totalKDPRevenue = monthlyRevenue.data?.reduce((sum, m) => sum + (m.kdp_revenue || 0), 0) || 0;
+  const totalNotionRevenue = monthlyRevenue.data?.reduce((sum, m) => sum + (m.notion_revenue || 0), 0) || 0;
+  const totalEtsyRevenue = monthlyRevenue.data?.reduce((sum, m) => sum + (m.etsy_revenue || 0), 0) || 0;
+  const totalGumroadRevenue = monthlyRevenue.data?.reduce((sum, m) => sum + (m.gumroad_revenue || 0), 0) || 0;
+  const totalRevenue = totalKDPRevenue + totalNotionRevenue + totalEtsyRevenue + totalGumroadRevenue;
+  
   const activeRuntimePMUsers =
-    runtimePMUsers?.filter((u) => u.status === "active").length || 0;
+    runtimePMUsers.data?.filter((u) => u.status === "active").length || 0;
 
   return {
     totalKDPRevenue,
     totalNotionRevenue,
+    totalEtsyRevenue,
+    totalGumroadRevenue,
+    totalRevenue,
     activeRuntimePMUsers,
-    totalKDPUnits: kdpSales?.reduce((sum, s) => sum + (s.units || 0), 0) || 0,
+    totalKDPUnits: kdpSales.data?.reduce((sum, s) => sum + (s.units || 0), 0) || 0,
     totalNotionUnits:
-      notionSales?.reduce((sum, s) => sum + (s.units || 0), 0) || 0,
-    kdpSales: kdpSales || [],
-    notionSales: notionSales || [],
-    runtimePMUsers: runtimePMUsers || [],
+      notionSales.data?.reduce((sum, s) => sum + (s.units || 0), 0) || 0,
+    kdpSales: kdpSales.data || [],
+    notionSales: notionSales.data || [],
+    runtimePMUsers: runtimePMUsers.data || [],
+    monthlyRevenue: monthlyRevenue.data || [],
   };
 }
 
 // The Friendly Tech Help Metrics
 async function getFriendlyTechMetrics() {
-  const { data: techDays } = await supabase
-    .from("friendly_tech_days")
-    .select("*")
-    .order("date", { ascending: false });
+  const [techDays, hoaClients, monthlyMetrics] = await Promise.all([
+    supabase.from("friendly_tech_days").select("*").order("date", { ascending: false }),
+    supabase.from("friendly_tech_hoa_clients").select("*"),
+    supabase.from("friendly_tech_monthly_metrics").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
+  ]);
 
-  const { data: hoaClients } = await supabase
-    .from("friendly_tech_hoa_clients")
-    .select("*");
-
-  const totalRevenue =
-    techDays?.reduce((sum, t) => sum + (t.revenue || 0), 0) || 0;
+  // Calculate total revenue from monthly logs
+  const totalRevenue = monthlyMetrics.data?.reduce((sum, m) => sum + (m.revenue || 0), 0) || 0;
   const activeHOAClients =
-    hoaClients?.filter((c) => c.status === "active").length || 0;
-  const totalSessions = techDays?.length || 0;
+    hoaClients.data?.filter((c) => c.status === "active").length || 0;
+  const totalSessions = techDays.data?.length || 0;
 
   return {
     totalRevenue,
     activeHOAClients,
     totalSessions,
-    techDays: techDays || [],
-    hoaClients: hoaClients || [],
+    techDays: techDays.data || [],
+    hoaClients: hoaClients.data || [],
+    monthlyMetrics: monthlyMetrics.data || [],
   };
 }
 
 // Runtime PM Metrics
 async function getRuntimePMMetrics() {
-  const { data: users } = await supabase.from("runtime_pm_users").select("*");
+  const [users, subscriptions, monthlyMetrics] = await Promise.all([
+    supabase.from("runtime_pm_users").select("*"),
+    supabase.from("runtime_pm_subscriptions").select("*"),
+    supabase.from("runtime_pm_monthly_metrics").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
+  ]);
 
-  const { data: subscriptions } = await supabase
-    .from("runtime_pm_subscriptions")
-    .select("*");
-
-  const activeUsers = users?.filter((u) => u.status === "active").length || 0;
-  const totalSubscriptions =
-    subscriptions?.filter((s) => s.status === "active").length || 0;
-  const monthlyRecurringRevenue =
-    subscriptions?.reduce((sum, s) => sum + (s.monthly_amount || 0), 0) || 0;
+  // Get current month values from monthly metrics, fallback to calculated
+  const currentMonth = monthlyMetrics.data?.[0];
+  const activeUsers = currentMonth?.active_users || users.data?.filter((u) => u.status === "active").length || 0;
+  const totalSubscriptions = currentMonth?.active_subscriptions || subscriptions.data?.filter((s) => s.status === "active").length || 0;
+  const monthlyRecurringRevenue = currentMonth?.revenue || subscriptions.data?.reduce((sum, s) => sum + (s.monthly_amount || 0), 0) || 0;
+  
+  // Calculate total revenue from monthly logs
+  const totalRevenue = monthlyMetrics.data?.reduce((sum, m) => sum + (m.revenue || 0), 0) || 0;
 
   return {
     activeUsers,
     totalSubscriptions,
     monthlyRecurringRevenue,
-    users: users || [],
-    subscriptions: subscriptions || [],
+    totalRevenue,
+    users: users.data || [],
+    subscriptions: subscriptions.data || [],
+    monthlyMetrics: monthlyMetrics.data || [],
   };
 }
 
@@ -378,4 +400,185 @@ export async function deleteMetricOverride(company, metricKey) {
     .eq("company", company)
     .eq("metric_key", metricKey);
   if (error) throw error;
+}
+
+// Log monthly revenue for businesses
+export async function logMonthlyRevenue(table, year, month, revenueData) {
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        operation: "logMonthlyRevenue",
+        data: {
+          table,
+          year,
+          month,
+          revenueData,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || error.message || "Failed to log monthly revenue");
+  }
+
+  return await response.json();
+}
+
+// Log monthly engagements for Elk Peak
+export async function logMonthlyEngagements(year, month, count, notes) {
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        operation: "logMonthlyEngagements",
+        data: {
+          year,
+          month,
+          count,
+          notes,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || error.message || "Failed to log monthly engagements");
+  }
+
+  return await response.json();
+}
+
+// Log monthly MRR for Elk Peak
+export async function logMonthlyMRR(year, month, mrr, notes) {
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        operation: "logMonthlyMRR",
+        data: {
+          year,
+          month,
+          mrr,
+          notes,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || error.message || "Failed to log monthly MRR");
+  }
+
+  return await response.json();
+}
+
+// Delete monthly revenue
+export async function deleteMonthlyRevenue(table, year, month) {
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        operation: "deleteMonthlyRevenue",
+        data: {
+          table,
+          year,
+          month,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || error.message || "Failed to delete monthly revenue");
+  }
+
+  return await response.json();
+}
+
+// Delete monthly engagements
+export async function deleteMonthlyEngagements(year, month) {
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        operation: "deleteMonthlyEngagements",
+        data: {
+          year,
+          month,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || error.message || "Failed to delete monthly engagements");
+  }
+
+  return await response.json();
+}
+
+// Delete monthly MRR
+export async function deleteMonthlyMRR(year, month) {
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        operation: "deleteMonthlyMRR",
+        data: {
+          year,
+          month,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || error.message || "Failed to delete monthly MRR");
+  }
+
+  return await response.json();
 }
