@@ -68,14 +68,15 @@ serve(async (req) => {
       });
     }
 
-    // Domain verified - get anon key from Supabase secrets
+    // Domain verified - get keys from Supabase secrets
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
       return new Response(
         JSON.stringify({
-          error: "Server configuration error",
+          error: "Server configuration error - missing environment variables",
           authenticated: false,
         }),
         {
@@ -85,11 +86,66 @@ serve(async (req) => {
       );
     }
 
-    // Just verify domain is allowed - no password check here
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (e) {
+      return new Response(JSON.stringify({ error: "Invalid request body" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { password } = requestBody;
+
+    if (!password) {
+      return new Response(JSON.stringify({ error: "Password is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Use service role key for admin password verification (bypasses RLS)
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Verify admin password and admin status
+    const { data: adminData, error: adminError } = await supabase
+      .from("admin_password")
+      .select("*")
+      .eq("password", password)
+      .maybeSingle();
+
+    if (adminError) {
+      return new Response(
+        JSON.stringify({
+          error: "Database error",
+          details: adminError.message,
+          authenticated: false,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!adminData) {
+      return new Response(
+        JSON.stringify({
+          error: "Invalid password",
+          authenticated: false,
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     return new Response(
       JSON.stringify({
         authenticated: true,
-        domainAllowed: true,
+        isAdmin: adminData.is_admin || false,
       }),
       {
         status: 200,

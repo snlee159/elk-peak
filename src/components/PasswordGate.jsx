@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Input, Button, Field, Label, Heading, Text } from "@/catalyst";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
-import { adminAuth } from "@/services/api";
+import { verifyPassword } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function PasswordGate({ children }) {
@@ -34,7 +34,7 @@ export default function PasswordGate({ children }) {
 
     setIsLoading(true);
     try {
-      const result = await adminAuth(password);
+      const result = await verifyPassword(password);
 
       if (result && result.authenticated) {
         setIsAuthenticated(true);

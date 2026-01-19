@@ -1,9 +1,43 @@
 import { supabase } from "@/lib/supabase";
 
-// Admin auth function - must be called before any data access
-export async function adminAuth(password) {
+// Admin auth function - verifies domain is allowed (no password check)
+export async function adminAuth() {
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-auth`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({}),
+    }
+  );
+
+  if (!response.ok) {
+    let error;
+    try {
+      error = await response.json();
+    } catch (e) {
+      throw new Error(
+        `Domain verification failed: ${response.status} ${response.statusText}`
+      );
+    }
+    const errorMessage =
+      error.message || error.error || error.details || "Domain not allowed";
+    console.error("Supabase Edge Function error:", error);
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return data;
+}
+
+// Verify password function - checks password and admin status
+export async function verifyPassword(password) {
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-password`,
     {
       method: "POST",
       headers: {
@@ -21,11 +55,11 @@ export async function adminAuth(password) {
       error = await response.json();
     } catch (e) {
       throw new Error(
-        `Authentication failed: ${response.status} ${response.statusText}`
+        `Password verification failed: ${response.status} ${response.statusText}`
       );
     }
     const errorMessage =
-      error.message || error.error || error.details || "Authentication failed";
+      error.message || error.error || error.details || "Invalid password";
     console.error("Supabase Edge Function error:", error);
     throw new Error(errorMessage);
   }
@@ -239,7 +273,7 @@ export async function createQuarterGoal(goal) {
   const password = getAdminPassword();
   
   const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-auth`,
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
       method: "POST",
       headers: {
@@ -267,7 +301,7 @@ export async function updateQuarterGoal(id, updates) {
   const password = getAdminPassword();
   
   const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-auth`,
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
       method: "POST",
       headers: {
@@ -296,7 +330,7 @@ export async function deleteQuarterGoal(id) {
   const password = getAdminPassword();
   
   const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-auth`,
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
       method: "POST",
       headers: {
@@ -365,7 +399,7 @@ export async function updateMetricOverride(company, metricKey, value) {
   const password = getAdminPassword();
   
   const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-auth`,
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-write`,
     {
       method: "POST",
       headers: {
