@@ -5,7 +5,7 @@ import {
   CpuChipIcon,
   ChartBarIcon,
   ArrowRightIcon,
-} from "@heroicons/react/24/outline";
+} from "@heroicons/react/24/outline"; 
 
 export default function Home() {
   return (
