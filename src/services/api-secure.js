@@ -439,11 +439,67 @@ export async function deleteMonthlyMRR(year, month) {
 }
 
 export async function updateMetricOverride(company, metricKey, value) {
-  // This would need implementation in admin endpoints
-  throw new Error("Metric overrides not yet implemented in new API");
+  // Check if override already exists
+  const existing = await callEdgeFunction(
+    "admin-manage-data",
+    {
+      operation: "list",
+      table: "business_metrics_overrides",
+      filters: { company, metric_key: metricKey },
+    },
+    true
+  );
+
+  if (existing && existing.length > 0) {
+    // Update existing override
+    return await callEdgeFunction(
+      "admin-manage-data",
+      {
+        operation: "update",
+        table: "business_metrics_overrides",
+        id: existing[0].id,
+        data: { value, updated_at: new Date().toISOString() },
+      },
+      true
+    );
+  } else {
+    // Create new override
+    return await callEdgeFunction(
+      "admin-manage-data",
+      {
+        operation: "create",
+        table: "business_metrics_overrides",
+        data: { company, metric_key: metricKey, value },
+      },
+      true
+    );
+  }
 }
 
 export async function deleteMetricOverride(company, metricKey) {
-  // This would need implementation in admin endpoints
-  throw new Error("Metric overrides not yet implemented in new API");
+  // Find the override first
+  const existing = await callEdgeFunction(
+    "admin-manage-data",
+    {
+      operation: "list",
+      table: "business_metrics_overrides",
+      filters: { company, metric_key: metricKey },
+    },
+    true
+  );
+
+  if (existing && existing.length > 0) {
+    // Delete the override
+    return await callEdgeFunction(
+      "admin-manage-data",
+      {
+        operation: "delete",
+        table: "business_metrics_overrides",
+        id: existing[0].id,
+      },
+      true
+    );
+  }
+
+  return { success: true }; // Already doesn't exist
 }

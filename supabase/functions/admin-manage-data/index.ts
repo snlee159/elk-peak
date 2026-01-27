@@ -79,6 +79,7 @@ const ALLOWED_TABLES = [
   "runtime_pm_users",
   "runtime_pm_subscriptions",
   "quarter_goal",
+  "business_metrics_overrides",
 ];
 
 // Define allowed fields per table to prevent injection of system fields
@@ -92,6 +93,7 @@ const TABLE_ALLOWED_FIELDS: Record<string, string[]> = {
   runtime_pm_users: ["email", "status", "signup_date", "last_active_date", "subscription_tier", "notes"],
   runtime_pm_subscriptions: ["user_id", "status", "monthly_amount", "start_date", "end_date", "notes"],
   quarter_goal: ["name", "target_value", "current_value", "quarter", "year", "metric_type", "order"],
+  business_metrics_overrides: ["company", "metric_key", "value", "updated_by"],
 };
 
 function getRateLimitKey(req: Request): string {
