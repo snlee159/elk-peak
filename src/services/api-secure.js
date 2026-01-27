@@ -451,14 +451,14 @@ export async function updateMetricOverride(company, metricKey, value) {
   );
 
   if (existing && existing.length > 0) {
-    // Update existing override
+    // Update existing override (updated_at is auto-managed by database)
     return await callEdgeFunction(
       "admin-manage-data",
       {
         operation: "update",
         table: "business_metrics_overrides",
         id: existing[0].id,
-        data: { value, updated_at: new Date().toISOString() },
+        data: { value },
       },
       true
     );
