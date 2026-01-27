@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Input, Field, Label } from "@/catalyst";
 import { EnvelopeIcon, PhoneIcon } from "@heroicons/react/24/outline";
 import toast from "react-hot-toast";
-import emailjs from "@emailjs/browser";
+import { submitContactForm } from "@/services/api-secure";
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -18,28 +18,17 @@ export default function Contact() {
     setIsSubmitting(true);
 
     try {
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-
-      if (!serviceId || !templateId || !publicKey) {
-        throw new Error("EmailJS configuration is missing. Please check your environment variables.");
-      }
-
-      const templateParams = {
-        from_name: formData.name,
-        from_email: formData.email,
-        company: formData.company || "Not provided",
-        message: formData.message,
-        to_name: "Elk Peak Consulting",
-      };
-
-      await emailjs.send(serviceId, templateId, templateParams, publicKey);
+      await submitContactForm(
+        formData.name,
+        formData.email,
+        formData.message,
+        formData.company
+      );
 
       toast.success("Thank you! We'll be in touch soon.");
       setFormData({ name: "", email: "", company: "", message: "" });
     } catch (error) {
-      console.error("Error sending email:", error);
+      console.error("Error sending message:", error);
       toast.error(
         error.message || "Failed to send message. Please try again or email us directly."
       );

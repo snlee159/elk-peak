@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Input, Button, Field, Label, Heading, Text } from "@/catalyst";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
-import { verifyPassword } from "@/services/api";
+import { verifyPassword, setAdminPassword } from "@/services/api-secure";
 import toast from "react-hot-toast";
 
 export default function PasswordGate({ children }) {
@@ -17,10 +17,12 @@ export default function PasswordGate({ children }) {
     const authData = sessionStorage.getItem("elkPeakAuth");
     if (authData) {
       const parsed = JSON.parse(authData);
-      // Restore session if authenticated (password may be missing but that's OK for viewing)
-      if (parsed.authenticated) {
+      // Restore session if authenticated
+      if (parsed.authenticated && parsed.password) {
         setIsAuthenticated(true);
         setIsAdmin(parsed.isAdmin);
+        // Restore password to api-secure module
+        setAdminPassword(parsed.password);
       }
       setIsChecking(false);
     } else {
@@ -39,17 +41,18 @@ export default function PasswordGate({ children }) {
     try {
       const result = await verifyPassword(password);
 
-      if (result && result.authenticated) {
+      if (result && result.valid) {
         setIsAuthenticated(true);
         setIsAdmin(result.isAdmin || false);
 
-        // Store in session storage
+        // Store in session storage (password persists for session only, cleared on browser close)
         sessionStorage.setItem(
           "elkPeakAuth",
           JSON.stringify({
             isAdmin: result.isAdmin || false,
             authenticated: true,
-          })
+            password: password,
+          }),
         );
 
         toast.success("Access granted");
@@ -58,7 +61,6 @@ export default function PasswordGate({ children }) {
         setPassword("");
       }
     } catch (error) {
-      console.error("Error authenticating:", error);
       toast.error(error.message || "Error authenticating. Please try again.");
     } finally {
       setIsLoading(false);
@@ -80,9 +82,7 @@ export default function PasswordGate({ children }) {
       <div className="h-svh flex justify-center items-center bg-zinc-50 dark:bg-zinc-900">
         <div className="w-full max-w-md p-8">
           <div className="rounded-lg bg-white p-8 shadow-lg ring-1 ring-zinc-950/10 dark:bg-zinc-900 dark:ring-white/10">
-            <Heading className="mb-4 text-center">
-              Metrics Dashboard
-            </Heading>
+            <Heading className="mb-4 text-center">Metrics Dashboard</Heading>
             <Text className="mb-6 text-center text-zinc-500 dark:text-zinc-400">
               Please enter your password to access the dashboard
             </Text>
@@ -132,4 +132,3 @@ export default function PasswordGate({ children }) {
     </div>
   );
 }
-
