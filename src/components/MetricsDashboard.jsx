@@ -133,21 +133,28 @@ export default function MetricsDashboard({ isAdmin = false }) {
   const handleSaveGoal = async () => {
     try {
       const { quarter, year } = getCurrentQuarter();
-      const goalData = {
-        id: editingGoal?.id || uuidv4(),
-        name: editValues.goalName || "",
-        target_value: parseFloat(editValues.targetValue) || 0,
-        current_value: parseFloat(editValues.currentValue) || 0,
-        quarter,
-        year,
-        metric_type: editValues.metricType || "custom",
-        order: parseInt(editValues.order) || 0,
-      };
 
       if (editingGoal) {
-        await updateQuarterGoal(editingGoal.id, goalData);
+        // Update - only send mutable fields (immutable: id, quarter, year, metric_type)
+        const updates = {
+          name: editValues.goalName || "",
+          target_value: parseFloat(editValues.targetValue) || 0,
+          current_value: parseFloat(editValues.currentValue) || 0,
+          order: parseInt(editValues.order) || 0,
+        };
+        await updateQuarterGoal(editingGoal.id, updates);
         toast.success("Goal updated");
       } else {
+        // Create - send all fields
+        const goalData = {
+          name: editValues.goalName || "",
+          target_value: parseFloat(editValues.targetValue) || 0,
+          current_value: parseFloat(editValues.currentValue) || 0,
+          quarter,
+          year,
+          metric_type: editValues.metricType || "custom",
+          order: parseInt(editValues.order) || 0,
+        };
         await createQuarterGoal(goalData);
         toast.success("Goal added");
       }
