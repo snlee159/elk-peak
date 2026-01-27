@@ -10,7 +10,8 @@
 
 CREATE TABLE IF NOT EXISTS admin_password (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  password TEXT NOT NULL,
+  password TEXT, -- DEPRECATED: Use password_hash instead. Will be removed in future migration.
+  password_hash TEXT NOT NULL, -- bcrypt hash of password
   is_admin BOOLEAN NOT NULL DEFAULT true,
   name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()

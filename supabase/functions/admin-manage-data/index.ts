@@ -2,6 +2,45 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
+ * Verify a password against a stored PBKDF2 hash
+ */
+async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  try {
+    const parts = storedHash.split("$");
+    if (parts.length !== 3) return false;
+    
+    const [iterationsStr, saltBase64, hashBase64] = parts;
+    const iterations = parseInt(iterationsStr, 10);
+    if (isNaN(iterations)) return false;
+    
+    const salt = Uint8Array.from(atob(saltBase64), c => c.charCodeAt(0));
+    const storedHashBytes = Uint8Array.from(atob(hashBase64), c => c.charCodeAt(0));
+    
+    const passwordBuffer = new TextEncoder().encode(password);
+    const key = await crypto.subtle.importKey("raw", passwordBuffer, { name: "PBKDF2" }, false, ["deriveBits"]);
+    
+    const hashBuffer = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt: salt, iterations: iterations, hash: "SHA-256" },
+      key,
+      32 * 8
+    );
+    
+    const hashBytes = new Uint8Array(hashBuffer);
+    if (hashBytes.length !== storedHashBytes.length) return false;
+    
+    let diff = 0;
+    for (let i = 0; i < hashBytes.length; i++) {
+      diff |= hashBytes[i] ^ storedHashBytes[i];
+    }
+    
+    return diff === 0;
+  } catch (error) {
+    console.error("Error verifying password:", error);
+    return false;
+  }
+}
+
+/**
  * ADMIN: MANAGE BUSINESS DATA ENDPOINT
  * 
  * Capability: List, create, update, delete business records (clients, projects, sales, etc.)
@@ -97,14 +136,29 @@ function getCorsHeaders(origin: string | null): HeadersInit {
 }
 
 async function verifyAdminPassword(supabase: any, password: string): Promise<boolean> {
-  const { data, error } = await supabase
+  const { data: adminRecords, error } = await supabase
     .from("admin_password")
-    .select("password, is_admin")
-    .eq("password", password)
-    .eq("is_admin", true)
-    .single();
+    .select("password_hash, is_admin")
+    .eq("is_admin", true);
 
-  return !error && data !== null;
+  if (error || !adminRecords || adminRecords.length === 0) {
+    return false;
+  }
+
+  // Check password against all admin accounts
+  for (const admin of adminRecords) {
+    try {
+      const isMatch = await verifyPassword(password, admin.password_hash);
+      if (isMatch) {
+        return true;
+      }
+    } catch (err) {
+      // Invalid hash format - skip this record
+      continue;
+    }
+  }
+
+  return false;
 }
 
 function validateTableAccess(table: string): { valid: boolean; error?: string } {
