@@ -231,6 +231,7 @@ serve(async (req) => {
       "logLifeOrganizerRevenue",
       "logFriendlyTechMetrics",
       "logRuntimePMMetrics",
+      "logOrganizationCosts",
       "deleteMonthlyLog",
     ];
 
@@ -403,6 +404,24 @@ serve(async (req) => {
         break;
       }
 
+      case "logOrganizationCosts": {
+        const { cost, notes } = data;
+        if (typeof cost !== "number" || cost < 0) {
+          return new Response(
+            JSON.stringify({ error: "Cost must be a positive number" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        const { data: upsertResult, error: upsertError } = await supabase
+          .from("organization_monthly_costs")
+          .upsert({ year, month, cost, notes: notes || null }, { onConflict: "year,month" })
+          .select()
+          .single();
+        result = upsertResult;
+        error = upsertError;
+        break;
+      }
+
       case "deleteMonthlyLog": {
         const { table } = data;
         const validTables = [
@@ -412,6 +431,7 @@ serve(async (req) => {
           "life_organizer_monthly_revenue",
           "friendly_tech_monthly_metrics",
           "runtime_pm_monthly_metrics",
+          "organization_monthly_costs",
         ];
         
         if (!validTables.includes(table)) {

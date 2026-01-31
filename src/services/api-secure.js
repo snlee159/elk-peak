@@ -279,6 +279,17 @@ export async function logRuntimePMMetrics(
   );
 }
 
+export async function logOrganizationCosts(year, month, cost, notes = null) {
+  return await callEdgeFunction(
+    "admin-log-metrics",
+    {
+      operation: "logOrganizationCosts",
+      data: { year, month, cost, notes },
+    },
+    true
+  );
+}
+
 export async function deleteMonthlyLog(table, year, month) {
   return await callEdgeFunction(
     "admin-log-metrics",
@@ -436,6 +447,10 @@ export async function deleteMonthlyEngagements(year, month) {
 
 export async function deleteMonthlyMRR(year, month) {
   return deleteMonthlyLog("elk_peak_monthly_mrr", year, month);
+}
+
+export async function deleteOrganizationCosts(year, month) {
+  return deleteMonthlyLog("organization_monthly_costs", year, month);
 }
 
 export async function updateMetricOverride(company, metricKey, value) {

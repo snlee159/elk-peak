@@ -31,6 +31,8 @@ import {
   deleteMonthlyRevenue,
   deleteMonthlyEngagements,
   deleteMonthlyMRR,
+  logOrganizationCosts,
+  deleteOrganizationCosts,
 } from "@/services/api-secure";
 
 export default function MetricsDashboard({ isAdmin = false }) {
@@ -39,6 +41,7 @@ export default function MetricsDashboard({ isAdmin = false }) {
     lifeOrganizer: {},
     friendlyTech: {},
     runtimePM: {},
+    organization: {},
   });
   const [isLoading, setIsLoading] = useState(true);
   const [quarterGoals, setQuarterGoals] = useState([]);
@@ -51,6 +54,8 @@ export default function MetricsDashboard({ isAdmin = false }) {
   const [revenueModalData, setRevenueModalData] = useState({});
   const [showEngagementModal, setShowEngagementModal] = useState(false);
   const [engagementModalData, setEngagementModalData] = useState({});
+  const [showCostModal, setShowCostModal] = useState(false);
+  const [costModalData, setCostModalData] = useState({});
 
   useEffect(() => {
     // Only fetch data if admin authenticated
@@ -497,6 +502,70 @@ export default function MetricsDashboard({ isAdmin = false }) {
     }
   };
 
+  const openCostModal = (year = null, month = null) => {
+    const now = new Date();
+    const selectedYear = year || now.getFullYear();
+    const selectedMonth = month || now.getMonth() + 1;
+
+    // Check if data already exists for this month/year
+    let existingData = {};
+    if (metrics.organization.monthlyCosts) {
+      const existing = metrics.organization.monthlyCosts.find(
+        (m) => m.year === selectedYear && m.month === selectedMonth,
+      );
+      if (existing) {
+        existingData = {
+          cost: existing.cost || 0,
+          notes: existing.notes || "",
+        };
+      }
+    }
+
+    setCostModalData({
+      year: selectedYear,
+      month: selectedMonth,
+      cost: existingData.cost || 0,
+      notes: existingData.notes || "",
+    });
+    setShowCostModal(true);
+  };
+
+  const handleSaveCost = async () => {
+    try {
+      const { year, month, cost, notes } = costModalData;
+      await logOrganizationCosts(year, month, cost, notes);
+      toast.success("Monthly costs logged successfully");
+      setShowCostModal(false);
+      setCostModalData({});
+      fetchMetrics();
+    } catch (error) {
+      console.error("Error saving cost:", error);
+      toast.error(error.message || "Failed to save cost");
+    }
+  };
+
+  const handleDeleteCost = async () => {
+    if (
+      !confirm(
+        `Are you sure you want to delete the cost entry for ${formatMonthLabel(costModalData.year, costModalData.month)}?`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const { year, month } = costModalData;
+      await deleteOrganizationCosts(year, month);
+      toast.success("Monthly costs deleted successfully");
+      setShowCostModal(false);
+      setCostModalData({});
+      fetchMetrics();
+    } catch (error) {
+      console.error("Error deleting cost:", error);
+      toast.error(error.message || "Failed to delete cost");
+    }
+  };
+
   const getMonthName = (monthNumber) => {
     const date = new Date(2000, monthNumber - 1);
     return date.toLocaleDateString("en-US", { month: "long" });
@@ -545,6 +614,70 @@ export default function MetricsDashboard({ isAdmin = false }) {
         }
         return data;
       });
+  };
+
+  const prepareProfitOverviewData = () => {
+    // Get all unique year/month combinations from all sources
+    const monthsMap = new Map();
+
+    // Add revenue data from all businesses
+    [
+      ...(metrics.elkPeak.monthlyRevenue || []),
+      ...(metrics.lifeOrganizer.monthlyRevenue || []).map((m) => ({
+        year: m.year,
+        month: m.month,
+        revenue:
+          (m.kdp_revenue || 0) +
+          (m.notion_revenue || 0) +
+          (m.etsy_revenue || 0) +
+          (m.gumroad_revenue || 0),
+      })),
+      ...(metrics.friendlyTech.monthlyMetrics || []),
+      ...(metrics.runtimePM.monthlyMetrics || []),
+    ].forEach((item) => {
+      const key = `${item.year}-${item.month}`;
+      if (!monthsMap.has(key)) {
+        monthsMap.set(key, {
+          year: item.year,
+          month: item.month,
+          revenue: 0,
+          cost: 0,
+        });
+      }
+      const entry = monthsMap.get(key);
+      entry.revenue += item.revenue || 0;
+    });
+
+    // Add cost data
+    (metrics.organization.monthlyCosts || []).forEach((item) => {
+      const key = `${item.year}-${item.month}`;
+      if (!monthsMap.has(key)) {
+        monthsMap.set(key, {
+          year: item.year,
+          month: item.month,
+          revenue: 0,
+          cost: 0,
+        });
+      }
+      const entry = monthsMap.get(key);
+      entry.cost = item.cost || 0;
+    });
+
+    // Convert to array and sort by date (newest first)
+    const data = Array.from(monthsMap.values())
+      .sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      })
+      .reverse() // Reverse for chart display (oldest to newest)
+      .map((item) => ({
+        month: formatMonthLabel(item.year, item.month),
+        revenue: item.revenue,
+        cost: item.cost,
+        profit: item.revenue - item.cost,
+      }));
+
+    return data;
   };
 
   if (isLoading) {
@@ -661,6 +794,87 @@ export default function MetricsDashboard({ isAdmin = false }) {
                 No goals set for this quarter.
                 {isAdmin && " Click 'Add Goal' to create one."}
               </Text>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Profit Overview Section */}
+        <Card className="mb-6 w-full !max-w-none" style={{ maxWidth: "100%" }}>
+          <CardTitle className="flex justify-between items-center mb-4">
+            <span>Organization Guru - Profit Overview</span>
+            {isAdmin && (
+              <Button
+                onClick={() => openCostModal()}
+                outline
+                className="text-xs ml-4"
+              >
+                Log Monthly Costs
+              </Button>
+            )}
+          </CardTitle>
+          <CardBody>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div>
+                <div className="text-2xl font-bold text-zinc-950 dark:text-white">
+                  {formatCurrency(metrics.organization.totalRevenue || 0)}
+                </div>
+                <Text className="text-sm">Total Revenue (All Businesses)</Text>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {formatCurrency(metrics.organization.totalCosts || 0)}
+                </div>
+                <Text className="text-sm">Total Costs</Text>
+              </div>
+              <div>
+                <div
+                  className={`text-2xl font-bold ${
+                    (metrics.organization.totalProfit || 0) >= 0
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {formatCurrency(metrics.organization.totalProfit || 0)}
+                </div>
+                <Text className="text-sm">Total Profit</Text>
+              </div>
+            </div>
+            {prepareProfitOverviewData().length > 0 && (
+              <div className="mt-4">
+                <Text className="text-sm font-semibold mb-2">
+                  Monthly Revenue, Cost, and Profit
+                </Text>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={prepareProfitOverviewData()}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      name="Total Revenue"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="cost"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      name="Total Cost"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="profit"
+                      stroke="#3b82f6"
+                      strokeWidth={3}
+                      name="Profit"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </CardBody>
         </Card>
@@ -1846,6 +2060,143 @@ export default function MetricsDashboard({ isAdmin = false }) {
                   Cancel
                 </Button>
                 <Button onClick={handleSaveEngagement}>Save</Button>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+
+        {/* Monthly Cost Modal */}
+        <Dialog open={showCostModal} onClose={() => setShowCostModal(false)}>
+          <div className="p-6">
+            <Heading className="mb-4">
+              {costModalData.year &&
+              costModalData.month &&
+              metrics.organization.monthlyCosts?.some(
+                (m) =>
+                  m.year === costModalData.year &&
+                  m.month === costModalData.month,
+              )
+                ? "Edit Monthly Costs"
+                : "Log Monthly Costs"}
+            </Heading>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field>
+                  <Label>Year</Label>
+                  <Input
+                    type="number"
+                    value={costModalData.year || ""}
+                    onChange={(e) => {
+                      const newYear = parseInt(e.target.value);
+                      const month = costModalData.month;
+
+                      // Find existing data for new year/month
+                      let existingData = {};
+                      if (month && metrics.organization.monthlyCosts) {
+                        const existing = metrics.organization.monthlyCosts.find(
+                          (m) => m.year === newYear && m.month === month,
+                        );
+                        if (existing) {
+                          existingData = {
+                            cost: existing.cost || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      }
+
+                      setCostModalData({
+                        ...costModalData,
+                        year: newYear,
+                        ...existingData,
+                      });
+                    }}
+                  />
+                </Field>
+                <Field>
+                  <Label>Month</Label>
+                  <select
+                    value={costModalData.month || ""}
+                    onChange={(e) => {
+                      const newMonth = parseInt(e.target.value);
+                      const year = costModalData.year;
+
+                      // Find existing data for year/new month
+                      let existingData = {};
+                      if (year && metrics.organization.monthlyCosts) {
+                        const existing = metrics.organization.monthlyCosts.find(
+                          (m) => m.year === year && m.month === newMonth,
+                        );
+                        if (existing) {
+                          existingData = {
+                            cost: existing.cost || 0,
+                            notes: existing.notes || "",
+                          };
+                        }
+                      }
+
+                      setCostModalData({
+                        ...costModalData,
+                        month: newMonth,
+                        ...existingData,
+                      });
+                    }}
+                    className="w-full rounded-md border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2"
+                  >
+                    <option value="">Select month</option>
+                    {months.map((month) => (
+                      <option key={month.value} value={month.value}>
+                        {month.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <Field>
+                <Label>Monthly Cost</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={costModalData.cost || ""}
+                  onChange={(e) =>
+                    setCostModalData({
+                      ...costModalData,
+                      cost: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </Field>
+              <Field>
+                <Label>Notes (optional)</Label>
+                <Input
+                  value={costModalData.notes || ""}
+                  onChange={(e) =>
+                    setCostModalData({
+                      ...costModalData,
+                      notes: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <div className="flex gap-2 justify-end">
+                {costModalData.year &&
+                  costModalData.month &&
+                  metrics.organization.monthlyCosts?.some(
+                    (m) =>
+                      m.year === costModalData.year &&
+                      m.month === costModalData.month,
+                  ) && (
+                    <Button
+                      onClick={handleDeleteCost}
+                      outline
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Delete
+                    </Button>
+                  )}
+                <Button onClick={() => setShowCostModal(false)} outline>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveCost}>Save</Button>
               </div>
             </div>
           </div>

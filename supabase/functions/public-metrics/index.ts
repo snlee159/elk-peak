@@ -219,6 +219,7 @@ serve(async (req) => {
       rpmUsers,
       rpmSubscriptions,
       rpmMonthlyMetrics,
+      orgMonthlyCosts,
       metricOverrides,
     ] = await Promise.all([
       supabase.from("elk_peak_clients").select("*"),
@@ -235,6 +236,7 @@ serve(async (req) => {
       supabase.from("runtime_pm_users").select("*"),
       supabase.from("runtime_pm_subscriptions").select("*"),
       supabase.from("runtime_pm_monthly_metrics").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
+      supabase.from("organization_monthly_costs").select("*").order("year", { ascending: false }).order("month", { ascending: false }),
       supabase.from("business_metrics_overrides").select("*"),
     ]);
 
@@ -278,6 +280,11 @@ serve(async (req) => {
       return overrides[overrideKey] !== undefined ? overrides[overrideKey] : value;
     };
 
+    // Calculate organization-level metrics
+    const orgTotalCosts = orgMonthlyCosts.data?.reduce((sum: number, m: any) => sum + (m.cost || 0), 0) || 0;
+    const orgTotalRevenue = elkTotalRevenue + loTotalRevenue + ftTotalRevenue + rpmTotalRevenue;
+    const orgTotalProfit = orgTotalRevenue - orgTotalCosts;
+
     // Return aggregated metrics with time-series data for charts
     const metrics = {
       elkPeak: {
@@ -290,6 +297,9 @@ serve(async (req) => {
         monthlyRevenue: elkMonthlyRevenue.data || [],
         monthlyMRR: elkMonthlyMRR.data || [],
         monthlyEngagements: elkMonthlyEngagements.data || [],
+        // Store current MRR year/month for display
+        currentMonthMRRYear: elkMonthlyMRR.data?.[0]?.year,
+        currentMonthMRRMonth: elkMonthlyMRR.data?.[0]?.month,
       },
       lifeOrganizer: {
         totalKDPRevenue: applyOverride("lifeOrganizer", "totalKDPRevenue", loTotalKDP),
@@ -315,6 +325,13 @@ serve(async (req) => {
         totalRevenue: applyOverride("runtimePM", "totalRevenue", rpmTotalRevenue),
         // Time-series data for charts
         monthlyMetrics: rpmMonthlyMetrics.data || [],
+      },
+      organization: {
+        totalRevenue: orgTotalRevenue,
+        totalCosts: orgTotalCosts,
+        totalProfit: orgTotalProfit,
+        // Time-series data for charts
+        monthlyCosts: orgMonthlyCosts.data || [],
       },
     };
 
