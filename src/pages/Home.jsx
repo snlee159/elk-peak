@@ -3,9 +3,10 @@ import {
   MapPinIcon,
   SparklesIcon,
   CpuChipIcon,
-  ChartBarIcon,
   ArrowRightIcon,
-} from "@heroicons/react/24/outline"; 
+  ArrowTopRightOnSquareIcon,
+} from "@heroicons/react/24/outline";
+import { blogPosts } from "../data/blogPosts"; 
 
 export default function Home() {
   return (
@@ -105,8 +106,56 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* Blog Posts */}
       <section className="py-24 bg-zinc-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-20">
+            <h2 className="text-3xl sm:text-4xl font-semibold text-zinc-900 tracking-tight mb-4">
+              From the Blog
+            </h2>
+            <p className="text-lg text-zinc-600 max-w-2xl mx-auto leading-relaxed">
+              Insights on technology, automation, and growing your business
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[...blogPosts]
+              .sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt))
+              .map((post) => (
+                <a
+                  key={post.url}
+                  href={post.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group block rounded-2xl bg-white border border-zinc-200/50 overflow-hidden hover:shadow-lg hover:border-zinc-300/50 transition-all"
+                >
+                  <div className="aspect-[16/10] overflow-hidden bg-zinc-100">
+                    <img
+                      src={post.coverImage}
+                      alt=""
+                      className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="p-6">
+                    <h3 className="text-lg font-semibold text-zinc-900 mb-2 tracking-tight group-hover:text-zinc-700">
+                      {post.title}
+                    </h3>
+                    <p className="text-zinc-600 text-sm leading-relaxed line-clamp-2">
+                      {post.description}
+                    </p>
+                    <span className="inline-flex items-center mt-4 text-sm font-medium text-zinc-900 group-hover:text-zinc-700">
+                      Read on Medium
+                      <ArrowTopRightOnSquareIcon className="ml-1.5 h-4 w-4" />
+                    </span>
+                  </div>
+                </a>
+              ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-24 bg-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-semibold text-zinc-900 tracking-tight mb-4">
             Ready to Transform Your Business?
