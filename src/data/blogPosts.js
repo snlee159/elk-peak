@@ -12,4 +12,13 @@ export const blogPosts = [
     url: "https://elkpeakconsulting.medium.com/what-should-you-actually-automate-a-practical-decision-framework-6f80cf4cb4b0",
     postedAt: "2026-02-19T00:00:00Z",
   },
+  {
+    title: "10 High-Impact Automations Every Small Business Should Be Using",
+    description:
+      "10 practical AI automations small businesses can deploy today to save hours each week, respond faster to customers, and turn operations into profit.",
+    coverImage:
+      "https://miro.medium.com/v2/resize:fit:1400/format:webp/1*cOyO5BAz6_Ux1ELgtus9qA.jpeg",
+    url: "https://medium.com/@elkpeakconsulting/10-high-impact-automations-every-small-business-should-be-using-9259acf94f94",
+    postedAt: "2026-03-05T00:00:00Z",
+  },
 ];
