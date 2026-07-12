@@ -24,6 +24,12 @@ export default function Layout() {
                 Services
               </Link>
               <Link
+                to="/why-ai"
+                className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
+              >
+                Why AI
+              </Link>
+              <Link
                 to="/about"
                 className="text-sm font-medium text-zinc-600 hover:text-zinc-900 transition-colors"
               >
@@ -56,7 +62,7 @@ export default function Layout() {
                 Elk Peak Consulting
               </h3>
               <p className="text-sm text-zinc-600 leading-relaxed">
-                Tech solutions for modern businesses
+                AI that works as hard as you do
               </p>
             </div>
             <div>
@@ -70,6 +76,14 @@ export default function Layout() {
                     className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
                   >
                     Services
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/why-ai"
+                    className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
+                  >
+                    Why AI
                   </Link>
                 </li>
                 <li>

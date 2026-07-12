@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Input, Field, Label } from "@/catalyst";
 import { EnvelopeIcon, PhoneIcon } from "@heroicons/react/24/outline";
 import toast from "react-hot-toast";
-import { submitContactForm } from "@/services/api-secure";
 
 export default function Contact() {
   const [formData, setFormData] = useState({
@@ -18,12 +17,16 @@ export default function Contact() {
     setIsSubmitting(true);
 
     try {
-      await submitContactForm(
-        formData.name,
-        formData.email,
-        formData.message,
-        formData.company
-      );
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to send message.");
+      }
 
       toast.success("Thank you! We'll be in touch soon.");
       setFormData({ name: "", email: "", company: "", message: "" });
