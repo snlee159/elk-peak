@@ -32,6 +32,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "One or more fields exceed the allowed length." });
   }
 
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    console.error("RESEND_API_KEY is not set for this deployment/environment");
+    return res.status(502).json({ error: "Failed to send message. Please try again or email us directly." });
+  }
+
   const html = `
     <h2>New contact form submission</h2>
     <p><strong>Name:</strong> ${escapeHtml(name)}</p>
@@ -45,7 +51,7 @@ export default async function handler(req, res) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       from: FROM_ADDRESS,

@@ -31,8 +31,8 @@ export default function Home() {
             <p className="text-sm font-medium text-zinc-300 uppercase tracking-wide mb-4">
               AI Consulting for the Trades &amp; Builders
             </p>
-            <h1 className="text-5xl sm:text-6xl md:text-7xl font-semibold text-white tracking-tight mb-6">
-              AI that works as hard as you do
+            <h1 className="text-5xl sm:text-6xl md:text-7xl font-semibold text-white tracking-tight mb-6 text-balance">
+              AI That Works As Hard As You{"\u00A0"}Do
             </h1>
             <p className="text-xl sm:text-2xl text-zinc-200 mb-10 leading-relaxed">
               HVAC, plumbing, electrical, roofing, builders, and every trade in
